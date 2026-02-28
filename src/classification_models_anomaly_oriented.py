@@ -12,6 +12,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 import matplotlib.pyplot as plt
 import warnings
+import joblib
 warnings.filterwarnings("ignore")
 from feature_engineering import pipeline_inefficienza
 from sklearn.metrics import make_scorer, recall_score, f1_score, accuracy_score
@@ -181,6 +182,7 @@ def valuta_modello(name, y_true, y_pred, y_proba=None):
 
 # training and comparison of base models
 results = []
+trained_models = {}
 print("\nBASE MODELS:")
 for name, model in base_models.items():
     model.fit(X_train, y_train)
@@ -194,6 +196,7 @@ for name, model in base_models.items():
     acc = accuracy_score(y_test, y_pred)
     f1  = f1_score(y_test, y_pred, average="macro", zero_division=0)
     results.append({"Model": name, "Accuracy": acc, "F1-macro": f1})
+    trained_models[name] = model
 
 # random forest grid search
 print("\n\nRANDOM FOREST - GRID SEARCH")
@@ -238,6 +241,7 @@ results.append({
     "Accuracy": accuracy_score(y_test, y_pred_custom),
     "F1-macro": f1_score(y_test, y_pred_custom, average="macro", zero_division=0)
 })
+trained_models["Random Forest Ottimizzata"] = best_rf
 
 # xgboost grid search
 print("\n\nXGBOOST - GRID SEARCH")
@@ -289,6 +293,7 @@ results.append({
     "Accuracy": accuracy_score(y_test, y_pred_custom),
     "F1-macro": f1_score(y_test, y_pred_custom, average="macro", zero_division=0)
 })
+trained_models["XGBoost Ottimizzata"] = best_xgb
 
 # final comparison 
 results_df = pd.DataFrame(results).sort_values("F1-macro", ascending=False)
@@ -310,6 +315,65 @@ plt.savefig("../outputs/confusion_matrix_rf_anomaly.png", dpi=150)
 plt.show()
 print("Matrice salvata in ../outputs/confusion_matrix_rf_anomaly.png")
 
+#save model
+best_model_name = max(results, key=lambda x: x["F1-macro"])["Model"]
+best_model      = trained_models[best_model_name]
+best_f1         = max(r["F1-macro"] for r in results)
+
+print(f"\nModello migliore: {best_model_name}  (F1-macro: {best_f1:.4f})")
+
+joblib.dump(best_model, "../models/classification/best_classificazione_anomaly.pkl")
+
+parametri_anomaly = {
+    "freq_map":              freq_map,
+    "articoli_frequenti":    counts[counts >= threshold].index.tolist(),
+    "threshold":             threshold,
+    "soglia_attenzione":     SOGLIA_ATTENZIONE,
+    "soglia_anomalia":       SOGLIA_ANOMALIA,
+    "tipo_soglie":           "percentili_60_85",
+    "soglia_proba_anomalia": 0.30,
+    "soglia_proba_attenzione": 0.35,
+}
+joblib.dump(parametri_anomaly, "../models/classification/parametri_classificazione_anomaly.pkl")
+
+print(f"Modello salvato in ../models/classification/best_classificazione_anomaly.pkl")
+print(f"Parametri salvati in ../models/classification/parametri_classificazione_anomaly.pkl")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ****** APPUNTI ******
 
 # inizialmente bisogna decidere le soglie ovvero trasformare l'Indice_Inefficienza in classi discrete.
@@ -326,6 +390,7 @@ print("Matrice salvata in ../outputs/confusion_matrix_rf_anomaly.png")
 # hanno risultato dare valori particolarmente performanti
 
 # risultati allenando il modello in maniera standard:
+
 # Distribuzione classi:
 # NORMALE → 65.6%
 # ATTENZIONE → 19.6%
@@ -353,7 +418,10 @@ print("Matrice salvata in ../outputs/confusion_matrix_rf_anomaly.png")
 # 
 # come si può notare dalla matrice confusione i dati che vengono predetti meglio sono i dati
 # relativi alla classe normale (46), mentre i peggiori sono della classe attenzione (1) e anomalie (7)
-# 
+
+
+# risultati allenando il modello in maniera anomaly oriented:
+
 # modificando il codice cambiando le soglie usando i quantili (60° percentile) (85° percentile) al posto 
 # della media e dell'std che sono più influenzati dalla skweness in quanto i dati presentano una lunga coda 
 # sulla destra e la maggiorparte dei dati sulla sinistra con il valore di 1.00 ovvero che la macchina performa 

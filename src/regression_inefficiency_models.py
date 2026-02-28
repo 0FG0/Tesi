@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import KFold
+import joblib
 from feature_engineering import pipeline_inefficienza
 
 # loading the clean datas of KOEPFER 160/2 machine
@@ -170,12 +171,14 @@ def valuta_modello_regressione(name, y_true, y_pred):
 
 # training and comparison of base models
 results = []
+trained_models = {}
 print("\nBASE MODELS:")
 for name, model in base_models.items():
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
     result = valuta_modello_regressione(name, y_test, y_pred)
     results.append(result)
+    trained_models[name] = model 
 
 
 # random forest grid search
@@ -206,12 +209,9 @@ print("Miglior parametri RF:", rf_grid.best_params_)
 
 best_rf = rf_grid.best_estimator_
 y_pred_rf = best_rf.predict(X_test)
-result_rf = valuta_modello_regressione(
-    "Random Forest Ottimizzata",
-    y_test,
-    y_pred_rf
-)
+result_rf = valuta_modello_regressione("Random Forest Ottimizzata", y_test, y_pred_rf)
 results.append(result_rf)
+trained_models["Random Forest Ottimizzata"] = best_rf
 
 # xgboost grid search
 print("\nXGBOOST GRID SEARCH")
@@ -245,17 +245,58 @@ print("Migliori parametri XGB:", xgb_grid.best_params_)
 
 best_xgb = xgb_grid.best_estimator_
 y_pred_xgb = best_xgb.predict(X_test)
-result_xgb = valuta_modello_regressione(
-    "XGBoost Ottimizzata",
-    y_test,
-    y_pred_xgb
-)
+result_xgb = valuta_modello_regressione("XGBoost Ottimizzata", y_test, y_pred_xgb)
 results.append(result_xgb)
+trained_models["XGBoost Ottimizzata"] = best_xgb
 
 # final comparison
 results_df = pd.DataFrame(results).sort_values("R2", ascending=False)
 print("\nCONFRONTO FINALE MODELLI:")
 print(results_df.to_string(index=False))
+
+#save model
+best_model_name = min(
+    results,
+    key=lambda x: (x["RMSE"], -x["R2"])
+)["Model"]
+
+best_model = trained_models[best_model_name]
+best_rmse = min(r["RMSE"] for r in results)
+print(f"\nModello migliore: {best_model_name}  (RMSE: {best_rmse:.4f})")
+
+joblib.dump(best_model, "../models/regression/best_regressione_inefficienza.pkl")
+
+parametri = {
+    "freq_map":           freq_map,
+    "articoli_frequenti": counts[counts >= threshold].index.tolist(),
+    "threshold":          threshold,
+    "modello_scelto":     best_model_name,
+}
+joblib.dump(parametri, "../models/regression/parametri_prepocessing_regressione_inefficienza.pkl")
+
+print(f"Modello salvato in ../models/regression/best_regressione_inefficienza.pkl")
+print(f"Parametri salvati in ../models/regression/parametri_prepocessing_regressione_inefficienza.pkl")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # ****** APPUNTI ******
 # R² (Coefficiente di Determinazione) -> quanto il modello si avvicina al valore reale,

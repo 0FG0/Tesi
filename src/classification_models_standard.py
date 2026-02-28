@@ -3,15 +3,18 @@ import numpy as np
 from sklearn.model_selection import train_test_split, GridSearchCV, KFold
 from sklearn.metrics import (classification_report, confusion_matrix, roc_auc_score, ConfusionMatrixDisplay)
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import f1_score, accuracy_score
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
+from sklearn.metrics import f1_score, accuracy_score
 from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 import matplotlib.pyplot as plt
 import warnings
+import joblib
 warnings.filterwarnings("ignore")
 from feature_engineering import pipeline_inefficienza
 
@@ -175,6 +178,7 @@ def valuta_modello(name, y_true, y_pred, y_proba=None):
 
 # training and comparison of base models
 results = []
+trained_models = {}
 print("\nBASE MODELS:")
 for name, model in base_models.items():
     model.fit(X_train, y_train)
@@ -184,10 +188,10 @@ for name, model in base_models.items():
 
     valuta_modello(name, y_test, y_pred, y_proba)
 
-    from sklearn.metrics import f1_score, accuracy_score
     acc = accuracy_score(y_test, y_pred)
     f1  = f1_score(y_test, y_pred, average="macro", zero_division=0)
     results.append({"Model": name, "Accuracy": acc, "F1-macro": f1})
+    trained_models[name] = model
 
 # random forest grid search
 print("\n\nRANDOM FOREST - GRID SEARCH")
@@ -220,12 +224,12 @@ y_pred_rf    = best_rf.predict(X_test)
 y_proba_rf   = best_rf.predict_proba(X_test)
 valuta_modello("Random Forest Ottimizzata", y_test, y_pred_rf, y_proba_rf)
 
-from sklearn.metrics import f1_score, accuracy_score
 results.append({
     "Model":      "Random Forest Ottimizzata",
     "Accuracy":   accuracy_score(y_test, y_pred_rf),
     "F1-macro":   f1_score(y_test, y_pred_rf, average="macro", zero_division=0)
 })
+trained_models["Random Forest Ottimizzata"] = best_rf
 
 # xgboost grid search
 print("\n\nXGBOOST - GRID SEARCH")
@@ -269,6 +273,7 @@ results.append({
     "Accuracy": accuracy_score(y_test, y_pred_xgb),
     "F1-macro": f1_score(y_test, y_pred_xgb, average="macro", zero_division=0)
 })
+trained_models["XGBoost Ottimizzata"] = best_xgb
 
 # final comparison 
 results_df = pd.DataFrame(results).sort_values("F1-macro", ascending=False)
@@ -287,3 +292,27 @@ plt.tight_layout()
 plt.savefig("../outputs/confusion_matrix_rf_standard.png", dpi=150)
 plt.show()
 print("  Matrice salvata in ../outputs/confusion_matrix_rf_standard.png")
+
+
+# save model
+best_model_name = max(results, key=lambda x: x["F1-macro"])["Model"]
+best_model      = trained_models[best_model_name]
+best_f1         = max(r["F1-macro"] for r in results)
+
+print(f"\nModello migliore: {best_model_name}  (F1-macro: {best_f1:.4f})")
+
+joblib.dump(best_model, "../models/classification/best_classificazione_standard.pkl")
+
+parametri_standard = {
+    "freq_map":           freq_map,
+    "articoli_frequenti": counts[counts >= threshold].index.tolist(),
+    "threshold":          threshold,
+    "soglia_attenzione":  SOGLIA_ATTENZIONE,
+    "soglia_anomalia":    SOGLIA_ANOMALIA,
+    "tipo_soglie":        "mean_std",
+    "modello_scelto":     best_model_name,
+}
+joblib.dump(parametri_standard, "../models/classification/parametri_classificazione_standard.pkl")
+
+print(f"Modello salvato in ../models/classification/best_classificazione_standard.pkl")
+print(f"Parametri salvati in ../models/classification/parametri_classificazione_standard.pkl")
