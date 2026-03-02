@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 from sklearn.model_selection import train_test_split, GridSearchCV, KFold
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.linear_model import LinearRegression, Ridge, Lasso
@@ -15,8 +16,15 @@ import warnings
 warnings.filterwarnings("ignore")
 from feature_engineering import pipeline_tempo
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+DATA_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "koepfer_160_2.csv")
+OUTPUT_PLOT_PATH = os.path.join(PROJECT_ROOT, "outputs", "times_compared_scatter.png")
+MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "best_regressione_time.pkl")
+PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "parametri_preprocessing_tempo.pkl")
+
 # load data 
-df = pd.read_csv("../data/processed/koepfer_160_2.csv")
+df = pd.read_csv(DATA_PATH)
 
 #frequency encoding
 counts = df['ARTICOLO'].value_counts()
@@ -227,12 +235,12 @@ print(f"\nXGBoost Ottimizzata  ->  R²: {r2_xgb:.4f}  |  RMSE: {rmse_xgb:.4f} or
 results.append({"Model": "XGBoost Ottimizzata", "R2": r2_xgb, "RMSE": rmse_xgb, "MAPE%": mape_xgb})
 
 # final comparison
-results_df = pd.DataFrame(results).sort_values("R2", ascending=False)
+results_df = pd.DataFrame(results).sort_values("MAPE%", ascending=True)
 print("\nCONFRONTO FINALE MODELLI:")
 print(results_df.to_string(index=False))
 
 # table to compare times (time predicted by the best model VS real teoric time in datas )
-best_model_name = max(results, key=lambda x: x["R2"])["Model"]
+best_model_name = min(results, key=lambda x: x["MAPE%"])["Model"]
 best_model = trained_models[best_model_name]
 
 y_pred_best = best_model.predict(X_test)
@@ -319,27 +327,27 @@ ax.set_xlabel("Campioni (test set, ordinati per indice)")
 ax.set_ylabel("Tempo (ore)")
 ax.legend()
 plt.tight_layout()
-plt.savefig("../outputs/times_compared_scatter.png", dpi=150)
+os.makedirs(os.path.dirname(OUTPUT_PLOT_PATH), exist_ok=True)
+plt.savefig(OUTPUT_PLOT_PATH, dpi=150)
 plt.show()
-print("\nGrafico salvato in ../outputs/times_compared_scatter.png")
+print(f"\nGrafico salvato in {OUTPUT_PLOT_PATH}")
 
 # saves model
-best_model_name = min(results, key=lambda x: x["MAPE%"])["Model"]
-best_model = trained_models[best_model_name]
 best_mape = min(r["MAPE%"] for r in results)
 
 print(f"\nModello migliore: {best_model_name}  (MAPE: {best_mape:.2f}%)")
 
-joblib.dump(best_model, "../models/regression/best_regressione_time.pkl")
+os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+joblib.dump(best_model, MODEL_PATH)
 parametri_tempo = {
     "freq_map":           freq_map,
     "articoli_frequenti": counts[counts >= threshold].index.tolist(),
     "threshold":          threshold,
 }
-joblib.dump(parametri_tempo, "../models/regression/parametri_preprocessing_tempo.pkl")
+joblib.dump(parametri_tempo, PARAMS_PATH)
 
-print("\nModello salvato in ../models/regression/best_regressione_time.pkl")
-print("Parametri salvati in ../models/regression/parametri_preprocessing_tempo.pkl")
+print(f"\nModello salvato in {MODEL_PATH}")
+print(f"Parametri salvati in {PARAMS_PATH}")
 
 
 # ****** APPUNTI ******

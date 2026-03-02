@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 from sklearn.model_selection import train_test_split, GridSearchCV, KFold
 from sklearn.metrics import (classification_report, confusion_matrix, roc_auc_score, ConfusionMatrixDisplay)
 from sklearn.linear_model import LogisticRegression
@@ -7,7 +8,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 import matplotlib.pyplot as plt
@@ -17,9 +18,16 @@ warnings.filterwarnings("ignore")
 from feature_engineering import pipeline_classificazione
 from sklearn.metrics import make_scorer, recall_score, f1_score, accuracy_score
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+DATA_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "koepfer_160_2.csv")
+OUTPUT_CM_PATH = os.path.join(PROJECT_ROOT, "outputs", "confusion_matrix_rf_anomaly.png")
+MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "classification", "best_classificazione_anomaly.pkl")
+PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "classification", "parametri_classificazione_anomaly.pkl")
+
 
 # load datas
-df = pd.read_csv("../data/processed/koepfer_160_2.csv")
+df = pd.read_csv(DATA_PATH)
 
 # frequency encoding 
 counts = df['ARTICOLO'].value_counts()
@@ -192,7 +200,6 @@ for name, model in base_models.items():
 
     valuta_modello(name, y_test, y_pred, y_proba)
 
-    from sklearn.metrics import f1_score, accuracy_score
     acc = accuracy_score(y_test, y_pred)
     f1  = f1_score(y_test, y_pred, average="macro", zero_division=0)
     results.append({"Model": name, "Accuracy": acc, "F1-macro": f1})
@@ -311,9 +318,10 @@ fig, ax = plt.subplots(figsize=(6, 5))
 disp.plot(ax=ax, cmap="Blues", colorbar=False)
 ax.set_title("Confusion Matrix - Random Forest Ottimizzata")
 plt.tight_layout()
-plt.savefig("../outputs/confusion_matrix_rf_anomaly.png", dpi=150)
+os.makedirs(os.path.dirname(OUTPUT_CM_PATH), exist_ok=True)
+plt.savefig(OUTPUT_CM_PATH, dpi=150)
 plt.show()
-print("Matrice salvata in ../outputs/confusion_matrix_rf_anomaly.png")
+print(f"Matrice salvata in {OUTPUT_CM_PATH}")
 
 #save model
 best_model_name = max(results, key=lambda x: x["F1-macro"])["Model"]
@@ -322,7 +330,8 @@ best_f1         = max(r["F1-macro"] for r in results)
 
 print(f"\nModello migliore: {best_model_name}  (F1-macro: {best_f1:.4f})")
 
-joblib.dump(best_model, "../models/classification/best_classificazione_anomaly.pkl")
+os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+joblib.dump(best_model, MODEL_PATH)
 
 parametri_anomaly = {
     "freq_map":              freq_map,
@@ -334,10 +343,10 @@ parametri_anomaly = {
     "soglia_proba_anomalia": 0.30,
     "soglia_proba_attenzione": 0.35,
 }
-joblib.dump(parametri_anomaly, "../models/classification/parametri_classificazione_anomaly.pkl")
+joblib.dump(parametri_anomaly, PARAMS_PATH)
 
-print(f"Modello salvato in ../models/classification/best_classificazione_anomaly.pkl")
-print(f"Parametri salvati in ../models/classification/parametri_classificazione_anomaly.pkl")
+print(f"Modello salvato in {MODEL_PATH}")
+print(f"Parametri salvati in {PARAMS_PATH}")
 
 
 

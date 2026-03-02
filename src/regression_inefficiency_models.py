@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.linear_model import LinearRegression, Ridge, Lasso
@@ -13,8 +14,14 @@ from sklearn.model_selection import KFold
 import joblib
 from feature_engineering import pipeline_inefficienza
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+DATA_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "koepfer_160_2.csv")
+MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "best_regressione_inefficienza.pkl")
+PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "parametri_prepocessing_regressione_inefficienza.pkl")
+
 # loading the clean datas of KOEPFER 160/2 machine
-df = pd.read_csv("../data/processed/koepfer_160_2.csv")
+df = pd.read_csv(DATA_PATH)
 
 counts = df['ARTICOLO'].value_counts()
 
@@ -248,7 +255,8 @@ best_model = trained_models[best_model_name]
 best_rmse = min(r["RMSE"] for r in results)
 print(f"\nModello migliore: {best_model_name}  (RMSE: {best_rmse:.4f})")
 
-joblib.dump(best_model, "../models/regression/best_regressione_inefficienza.pkl")
+os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+joblib.dump(best_model, MODEL_PATH)
 
 parametri = {
     "freq_map":           freq_map,
@@ -256,10 +264,10 @@ parametri = {
     "threshold":          threshold,
     "modello_scelto":     best_model_name,
 }
-joblib.dump(parametri, "../models/regression/parametri_prepocessing_regressione_inefficienza.pkl")
+joblib.dump(parametri, PARAMS_PATH)
 
-print(f"Modello salvato in ../models/regression/best_regressione_inefficienza.pkl")
-print(f"Parametri salvati in ../models/regression/parametri_prepocessing_regressione_inefficienza.pkl")
+print(f"Modello salvato in {MODEL_PATH}")
+print(f"Parametri salvati in {PARAMS_PATH}")
 
 # ****** APPUNTI ******
 # R² (Coefficiente di Determinazione) -> quanto il modello si avvicina al valore reale,
