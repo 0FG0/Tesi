@@ -2,7 +2,7 @@
 
 ### This project develops machine learning models to improve manufacturing processing time estimation. It analyzes production inefficiencies compared to company standards. Through regression and classification techniques, the system identifies operational anomalies and redefines theoretical times more consistently with actual times. The goal is to support industrial decision-making with quantitative and replicable predictive tools.
 
-- ## Features 📊
+1. ## Features 📊
 
 - Prediction of the **Inefficiency Index** using a regression model.
 - Prediction of **Processing Time (HOURS)** with comparison to theoretical time (AS400).
@@ -19,7 +19,7 @@
 - Automatic saving of results to CSV (`predictions.csv` or custom path).
 - Separate scripts for model training/tuning and a single script (`main.py`) for inference.
 
-- ## Installation 📦
+2. ## Installation 📦
 
   - Python 3.10+
   - Updated pip
@@ -33,15 +33,17 @@
      
   2. #### Create and activate the virtual environment
    
-    'python -m venv venv'
+    `python -m venv venv`
+  
     '.\venv\Scripts\Activate.ps1'
   
   3. #### Install dependencies
    
     'pip install --upgrade pip'
+  
     'pip install -r requirements.txt'
 
-- ## Usage 🚀
+3. ## Usage 🚀
   
   1. #### Run predictions (inference)
 
@@ -59,7 +61,10 @@
        
   2. #### Model training (optional)
      
-     python src\regression_inefficiency_models.py 
-     python src\regression_time_models.py 
-     python src\classification_models_standard.py 
+     python src\regression_inefficiency_models.py
+     
+     python src\regression_time_models.py
+     
+     python src\classification_models_standard.py
+     
      python src\classification_models_anomaly_oriented.py
