@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 import os
+import matplotlib.pyplot as plt
+import warnings
+import joblib
 from sklearn.model_selection import train_test_split, GridSearchCV, KFold
 from sklearn.metrics import (classification_report, confusion_matrix, roc_auc_score, ConfusionMatrixDisplay)
 from sklearn.linear_model import LogisticRegression
@@ -11,9 +14,6 @@ from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-import matplotlib.pyplot as plt
-import warnings
-import joblib
 warnings.filterwarnings("ignore")
 from feature_engineering import pipeline_classificazione
 from sklearn.metrics import make_scorer, recall_score, f1_score, accuracy_score
@@ -481,4 +481,3 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 # c'è da fare una discriminante però avendo solo 387 righe totali e un test set di 78 campioni, i risultati vanno 
 # letti con cautela statistica. 1 predizione in più o in meno sulla classe ANOMALIA (12 campioni nel test) sposta 
 # il recall dell'8%. I risultati sono promettenti ma andrebbero confermati su più dati.
-# 

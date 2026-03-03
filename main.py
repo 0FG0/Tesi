@@ -20,19 +20,19 @@
 # outputs structure:
 # same columns of the data imported plus the four colums of models ouputs
 
+import pandas as pd
+import numpy as np
 import argparse
 import sys
 import os
 import warnings
-warnings.filterwarnings("ignore")
-import pandas as pd
-import numpy as np
 import joblib
+warnings.filterwarnings("ignore")
 
 # adding src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from feature_engineering import pipeline_inefficienza, pipeline_tempo
+from feature_engineering import pipeline_inefficienza, pipeline_tempo, pipeline_classificazione
 
 # models path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -117,7 +117,7 @@ def predici_inefficienza(df_raw: pd.DataFrame) -> pd.Series:
     X  = prepara_X(df)
 
     predizioni = model.predict(X)
-    return pd.Series(predizioni, name="Indice_Inefficienza_Predetto")
+    return pd.Series(predizioni, index=df.index, name="Indice_Inefficienza_Predetto")
 
 # predicts time
 def predici_tempo(df_raw: pd.DataFrame) -> pd.Series:
@@ -137,11 +137,11 @@ def predici_classe_standard(df_raw: pd.DataFrame) -> pd.Series:
 
     df = df_raw.copy()
     df = applica_frequency_encoding(df, params)
-    df = pipeline_inefficienza(df)
+    df = pipeline_classificazione(df)
     X  = prepara_X(df)
 
     classi = model.predict(X)
-    return pd.Series([LABELS[c] for c in classi], name="Classe_Standard")
+    return pd.Series([LABELS[c] for c in classi], index=df.index, name="Classe_Standard")
 
 # classifies every machine processing with the anomaly oriented model
 def predici_classe_anomaly(df_raw: pd.DataFrame) -> pd.Series:
@@ -152,7 +152,7 @@ def predici_classe_anomaly(df_raw: pd.DataFrame) -> pd.Series:
 
     df = df_raw.copy()
     df = applica_frequency_encoding(df, params)
-    df = pipeline_inefficienza(df)
+    df = pipeline_classificazione(df)
     X  = prepara_X(df)
 
     proba = model.predict_proba(X)
@@ -160,7 +160,7 @@ def predici_classe_anomaly(df_raw: pd.DataFrame) -> pd.Series:
         proba[:, 2] >= soglia_anomalia, 2,
         np.where(proba[:, 1] >= soglia_attenzione, 1, 0)
     )
-    return pd.Series([LABELS[c] for c in classi], name="Classe_Anomaly_Oriented")
+    return pd.Series([LABELS[c] for c in classi], index=df.index, name="Classe_Anomaly_Oriented")
 
 # Main function
 def main(path_input: str, path_output: str = None):
@@ -210,14 +210,11 @@ def main(path_input: str, path_output: str = None):
                "Tempo_Teorico_TOT_ORE", "Tempo Lavoraz. ORE", "Indice_Inefficienza"]
     id_cols = [c for c in id_cols if c in df.columns]
 
-    risultati = df[id_cols].reset_index(drop=True).copy()
-    risultati = pd.concat([
-        risultati,
-        pred_inefficienza.reset_index(drop=True),
-        pred_tempo.reset_index(drop=True),
-        pred_standard.reset_index(drop=True),
-        pred_anomaly.reset_index(drop=True),
-    ], axis=1)
+    risultati = df[id_cols].copy()
+    risultati = risultati.join(pred_inefficienza)
+    risultati = risultati.join(pred_tempo)
+    risultati = risultati.join(pred_standard)
+    risultati = risultati.join(pred_anomaly)
 
     print("\n" + "="*70)
     print("RISULTATI PREDIZIONI")
@@ -230,8 +227,8 @@ def main(path_input: str, path_output: str = None):
 
     # Regression Indice_Inefficienza
     if pred_inefficienza.dtype != object and "Indice_Inefficienza" in df.columns:
-        real_ineff = df["Indice_Inefficienza"].reset_index(drop=True)
-        pred_ineff_reset = pred_inefficienza.reset_index(drop=True)
+        pred_ineff_reset = pred_inefficienza.dropna()
+        real_ineff = df.loc[pred_ineff_reset.index, "Indice_Inefficienza"]
         print(f"\n{'Indice_Inefficienza_Predetto':<40} {'Indice_Inefficienza_Reale'}")
         print(f"{'Media:':<12} {pred_ineff_reset.mean():<27.4f} Media:       {real_ineff.mean():.4f}")
         print(f"{'Min:':<12} {pred_ineff_reset.min():<27.4f} Min:         {real_ineff.min():.4f}")
@@ -254,14 +251,20 @@ def main(path_input: str, path_output: str = None):
             print(f"\n{nome_col}: impossibile caricare soglie ({e})")
             return
 
-        ineff = df_raw["Indice_Inefficienza"].reset_index(drop=True)
+        label_order = ["NORMALE", "ATTENZIONE", "ANOMALIA"]
+        pred_cls = serie_pred.dropna().astype(str)
+        valid_idx = pred_cls[pred_cls.isin(label_order)].index
+        if len(valid_idx) == 0:
+            print(f"\n{nome_col}: nessuna predizione valida disponibile.")
+            return
+
+        ineff = df_raw.loc[valid_idx, "Indice_Inefficienza"]
         real_cls = pd.Series(np.where(
             ineff <= soglia_attenzione, "NORMALE",
             np.where(ineff <= soglia_anomalia, "ATTENZIONE", "ANOMALIA")
-        ))
-        pred_cls = serie_pred.reset_index(drop=True)
+        ), index=valid_idx)
+        pred_cls = pred_cls.loc[valid_idx]
 
-        label_order = ["NORMALE", "ATTENZIONE", "ANOMALIA"]
         print(f"\n{nome_col}:")
         header = f"{'Classe':<14} {'Reale':>7} {'Predetto':>9} {'Corretti':>9} {'Acc. classe':>12}"
         print(header)
@@ -287,31 +290,35 @@ def main(path_input: str, path_output: str = None):
 
     # Time regression
     if pred_tempo.dtype != object and "Tempo Lavoraz. ORE" in df.columns and "Tempo_Teorico_TOT_ORE" in df.columns:
-        effettivo = df["Tempo Lavoraz. ORE"].reset_index(drop=True)
-        teorico = df["Tempo_Teorico_TOT_ORE"].reset_index(drop=True)
-        predetto = pred_tempo.reset_index(drop=True)
+        predetto = pred_tempo.dropna()
+        if len(predetto) == 0:
+            print(f"\nTempo_Predetto_ORE:")
+            print("  Nessuna predizione valida disponibile dopo le feature lag.")
+        else:
+            effettivo = df.loc[predetto.index, "Tempo Lavoraz. ORE"]
+            teorico = df.loc[predetto.index, "Tempo_Teorico_TOT_ORE"]
 
-        mask = effettivo != 0
+            mask = effettivo != 0
 
-        err_as400 = (effettivo - teorico).abs()
-        err_ml = (effettivo - predetto).abs()
+            err_as400 = (effettivo - teorico).abs()
+            err_ml = (effettivo - predetto).abs()
 
-        mape_as400 = (err_as400[mask] / effettivo[mask]).mean() * 100
-        mape_ml = (err_ml[mask] / effettivo[mask]).mean() * 100
-        riduzione_mape = (mape_as400 - mape_ml) / mape_as400 * 100 if mape_as400 != 0 else 0.0
+            mape_as400 = (err_as400[mask] / effettivo[mask]).mean() * 100
+            mape_ml = (err_ml[mask] / effettivo[mask]).mean() * 100
+            riduzione_mape = (mape_as400 - mape_ml) / mape_as400 * 100 if mape_as400 != 0 else 0.0
 
-        n_campioni = len(effettivo)
-        n_ml_meglio = (err_ml < err_as400).sum()
-        pct_ml_meglio = n_ml_meglio / n_campioni * 100
+            n_campioni = len(effettivo)
+            n_ml_meglio = (err_ml < err_as400).sum()
+            pct_ml_meglio = n_ml_meglio / n_campioni * 100 if n_campioni > 0 else 0.0
 
-        print(f"\nTempo_Predetto_ORE:")
-        print(f"Campioni nel test set:                    {n_campioni}")
-        print(f"Casi in cui ML è più preciso di AS400:    {n_ml_meglio} / {n_campioni}  ({pct_ml_meglio:.1f}%)")
-        print(f"")
-        print(f"Percentuale di quanto la previsione si discosta dal valore reale:")
-        print(f"MAPE Tempo Teorico AS400:                 {mape_as400:.2f}%")
-        print(f"MAPE Modello ML:                          {mape_ml:.2f}%")
-        print(f"Riduzione MAPE:                           {riduzione_mape:.1f}%")
+            print(f"\nTempo_Predetto_ORE:")
+            print(f"Campioni nel test set:                    {n_campioni}")
+            print(f"Casi in cui ML è più preciso di AS400:    {n_ml_meglio} / {n_campioni}  ({pct_ml_meglio:.1f}%)")
+            print(f"")
+            print(f"Percentuale di quanto la previsione si discosta dal valore reale:")
+            print(f"MAPE Tempo Teorico AS400:                 {mape_as400:.2f}%")
+            print(f"MAPE Modello ML:                          {mape_ml:.2f}%")
+            print(f"Riduzione MAPE:                           {riduzione_mape:.1f}%")
     elif pred_tempo.dtype != object:
         print(f"\nTempo_Predetto_ORE:")
         print(f"  Media: {pred_tempo.mean():.4f} ore  |  Min: {pred_tempo.min():.4f}  |  Max: {pred_tempo.max():.4f}")
@@ -319,12 +326,13 @@ def main(path_input: str, path_output: str = None):
         ("Classe_Standard", pred_standard),
         ("Classe_Anomaly_Oriented", pred_anomaly),
     ]:
-        if serie.dtype == object and "ERRORE" not in serie.values:
+        serie_valida = serie.dropna().astype(str)
+        if serie.dtype == object and len(serie_valida) > 0 and "ERRORE" not in serie_valida.values:
             print(f"\n{nome_col}:")
-            dist = serie.value_counts()
+            dist = serie_valida.value_counts()
             for label in ["NORMALE", "ATTENZIONE", "ANOMALIA"]:
                 cnt = dist.get(label, 0)
-                pct = cnt / len(serie) * 100
+                pct = cnt / len(serie_valida) * 100
                 print(f"  {label:<12}: {cnt:>4}  ({pct:.1f}%)")
 
     if path_output is None:
@@ -355,3 +363,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     main(args.input, args.output)
+
+
+
+

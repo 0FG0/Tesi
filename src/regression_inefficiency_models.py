@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import joblib
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.linear_model import LinearRegression, Ridge, Lasso
@@ -11,7 +12,6 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import KFold
-import joblib
 from feature_engineering import pipeline_inefficienza
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,8 +23,8 @@ PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "regression", "parametri_prep
 # loading the clean datas of KOEPFER 160/2 machine
 df = pd.read_csv(DATA_PATH)
 
+# frequency encoding 
 counts = df['ARTICOLO'].value_counts()
-
 threshold = 3 
 df['ARTICOLO_grouped'] = df['ARTICOLO'].where(
     df['ARTICOLO'].isin(counts[counts >= threshold].index), 

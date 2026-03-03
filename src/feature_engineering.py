@@ -1,23 +1,3 @@
-# ****** APPUNTI ******
-# Il feature engineering è il processo di trasformazione dei dati grezzi
-# in variabili (feature) che rendono gli algoritmi di machine learning più efficaci. 
-# I suoi obiettivi principali sono due: 
-# Rendere i dati compatibili: gli algoritmi non accettano dati testuali o date
-# dunque con il feature engineering trasformiamo i dati in formati leggibili dal modello.
-# Migliorare le prestazioni: aiuta il modello a cogliere sfumature e relazioni nascoste
-# nei dati che altrimenti passerebbero inosservate. 
-# bisogna stare attenti ad alcune cose:
-# non usare mai la colonna target (Indice_Inefficienza) come input diretto.
-# le feature "lag" e "rolling" devono usare solo valori passati (shift(1)),
-# mai il valore corrente della riga che stiamo cercando di predire.
-# Questo file va applicato prima dello split train/test.
-# QUESTO FILE SUPPORTA DUE USE CASE:
-# 1. target = "Indice_Inefficienza"  → pipeline_inefficienza()
-# 2. target = "Tempo Lavoraz. ORE"   → pipeline_tempo()
-# La differenza è solo nella colonna usata per lag e rolling features,
-# perché Indice_Inefficienza è calcolato da Tempo Lavoraz. ORE:
-# usare l'uno come base quando l'altro è il target sarebbe leakage indiretto.
-
 import pandas as pd
 
 # transforming time in numbers (es. 0 = monday)
@@ -80,4 +60,22 @@ def pipeline_tempo(df: pd.DataFrame, window: int = 10, lags: list = [1, 2, 3]) -
     return df
 
 
-
+# ****** APPUNTI ******
+# Il feature engineering è il processo di trasformazione dei dati grezzi
+# in variabili (feature) che rendono gli algoritmi di machine learning più efficaci. 
+# I suoi obiettivi principali sono due: 
+# Rendere i dati compatibili: gli algoritmi non accettano dati testuali o date
+# dunque con il feature engineering trasformiamo i dati in formati leggibili dal modello.
+# Migliorare le prestazioni: aiuta il modello a cogliere sfumature e relazioni nascoste
+# nei dati che altrimenti passerebbero inosservate. 
+# bisogna stare attenti ad alcune cose:
+# non usare mai la colonna target (Indice_Inefficienza) come input diretto.
+# le feature "lag" e "rolling" devono usare solo valori passati (shift(1)),
+# mai il valore corrente della riga che stiamo cercando di predire.
+# Questo file va applicato prima dello split train/test.
+# QUESTO FILE SUPPORTA DUE USE CASE:
+# 1. target = "Indice_Inefficienza"  → pipeline_inefficienza()
+# 2. target = "Tempo Lavoraz. ORE"   → pipeline_tempo()
+# La differenza è solo nella colonna usata per lag e rolling features,
+# perché Indice_Inefficienza è calcolato da Tempo Lavoraz. ORE:
+# usare l'uno come base quando l'altro è il target sarebbe leakage indiretto.

@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 import os
+import matplotlib.pyplot as plt
+import warnings
+import joblib
 from sklearn.model_selection import train_test_split, GridSearchCV, KFold
 from sklearn.metrics import (classification_report, confusion_matrix, roc_auc_score, ConfusionMatrixDisplay)
 from sklearn.linear_model import LogisticRegression
@@ -12,9 +15,6 @@ from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-import matplotlib.pyplot as plt
-import warnings
-import joblib
 warnings.filterwarnings("ignore")
 from feature_engineering import pipeline_classificazione
 
