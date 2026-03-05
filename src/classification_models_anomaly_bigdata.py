@@ -192,10 +192,10 @@ base_models = {
     "XGBoost": Pipeline([
         ("preprocessor", preprocessor_tree),
         ("model", XGBClassifier(
+            class_weight="balanced",
             random_state=42,
             verbosity=0,
             eval_metric="mlogloss",
-            use_label_encoder=False
         ))
     ]),
     "SVM": Pipeline([
@@ -238,6 +238,10 @@ def valuta_generalizzazione(name, y_train_true, y_train_pred, y_test_true, y_tes
     print(f"  Gap (train-test):    {gap:.4f}")
     print(f"  Diagnosi:            {diagnosi}")
 
+# SOGLIE CUSTOM (commentate - soglia standard 0.5 usata):
+# Per riabilitarle: decommentare predici_con_soglie e ottimizza_soglie,
+# e sostituire i blocchi "SOGLIA STANDARD 0.5" nelle sezioni RF e XGB.
+"""
 def predici_con_soglie(proba, soglia_anomalia, soglia_attenzione):
     return np.where(
         proba[:, 2] >= soglia_anomalia,
@@ -276,12 +280,13 @@ def ottimizza_soglie(proba_val, y_val):
                 }
 
     return migliori_soglie
+"""
 
 # training and comparison of base models
 results = []
 trained_models = {}
 predizioni_test = {}
-soglie_modello = {}
+# soglie_modello = {}
 print("\nBASE MODELS:")
 for name, model in base_models.items():
     model.fit(X_train, y_train)
@@ -327,35 +332,47 @@ rf_grid.fit(X_fit, y_fit)
 print("Migliori parametri RF:", rf_grid.best_params_)
 
 best_rf_val = rf_grid.best_estimator_
-proba_val = best_rf_val.predict_proba(X_val)
-rf_soglie = ottimizza_soglie(proba_val, y_val)
-print(
-    f"Soglie RF ottimizzate su validation -> anomalia: {rf_soglie['soglia_anomalia']:.2f}, "
-    f"attenzione: {rf_soglie['soglia_attenzione']:.2f}, "
-    f"recall_anomalia: {rf_soglie['recall_anomalia_val']:.4f}, "
-    f"errori 2->1: {rf_soglie['errori_2_to_1_val']}"
-)
+# SOGLIE CUSTOM (commentate - soglia standard 0.5 usata):
+# proba_val = best_rf_val.predict_proba(X_val)
+# rf_soglie = ottimizza_soglie(proba_val, y_val)
+# print(
+#     f"Soglie RF ottimizzate su validation -> anomalia: {rf_soglie['soglia_anomalia']:.2f}, "
+#     f"attenzione: {rf_soglie['soglia_attenzione']:.2f}, "
+#     f"recall_anomalia: {rf_soglie['recall_anomalia_val']:.4f}, "
+#     f"errori 2->1: {rf_soglie['errori_2_to_1_val']}"
+# )
 
 best_rf = clone(rf_pipeline).set_params(**rf_grid.best_params_)
 best_rf.fit(X_train, y_train)
 
-soglia_anomalia = rf_soglie["soglia_anomalia"]
-soglia_attenzione = rf_soglie["soglia_attenzione"]
-proba_train = best_rf.predict_proba(X_train)
-y_pred_train_custom = predici_con_soglie(proba_train, soglia_anomalia, soglia_attenzione)
-proba = best_rf.predict_proba(X_test) 
-y_pred_custom = predici_con_soglie(proba, soglia_anomalia, soglia_attenzione)
-valuta_modello("Random Forest Ottimizzata (soglie custom)", y_test, y_pred_custom, proba)
-valuta_generalizzazione("Random Forest Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test,
-                       y_pred_custom)
+# SOGLIA STANDARD 0.5: usa predict() direttamente
+# soglia_anomalia = rf_soglie["soglia_anomalia"]
+# soglia_attenzione = rf_soglie["soglia_attenzione"]
+# proba_train = best_rf.predict_proba(X_train)
+# y_pred_train_custom = predici_con_soglie(proba_train, soglia_anomalia, soglia_attenzione)
+# proba = best_rf.predict_proba(X_test)
+# y_pred_custom = predici_con_soglie(proba, soglia_anomalia, soglia_attenzione)
+# valuta_modello("Random Forest Ottimizzata (soglie custom)", y_test, y_pred_custom, proba)
+# valuta_generalizzazione("Random Forest Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test,
+#                        y_pred_custom)
+proba_train_rf = best_rf.predict_proba(X_train)
+y_pred_train_rf = best_rf.predict(X_train)
+proba_rf = best_rf.predict_proba(X_test)
+y_pred_rf = best_rf.predict(X_test)
+valuta_modello("Random Forest Ottimizzata (soglia 0.5)", y_test, y_pred_rf, proba_rf)
+valuta_generalizzazione("Random Forest Ottimizzata (soglia 0.5)", y_train, y_pred_train_rf, y_test, y_pred_rf)
 results.append({
     "Model": "Random Forest Ottimizzata",
-    "Accuracy": accuracy_score(y_test, y_pred_custom),
-    "F1-macro": f1_score(y_test, y_pred_custom, average="macro", zero_division=0)
+    "Accuracy": accuracy_score(y_test, y_pred_rf),
+    # "Accuracy": accuracy_score(y_test, y_pred_custom),
+    # "F1-macro": f1_score(y_test, y_pred_custom, average="macro", zero_division=0)
+    "F1-macro": f1_score(y_test, y_pred_rf, average="macro", zero_division=0)
 })
 trained_models["Random Forest Ottimizzata"] = best_rf
-predizioni_test["Random Forest Ottimizzata"] = y_pred_custom
-soglie_modello["Random Forest Ottimizzata"] = rf_soglie
+# predizioni_test["Random Forest Ottimizzata"] = y_pred_custom
+# soglie_modello["Random Forest Ottimizzata"] = rf_soglie
+predizioni_test["Random Forest Ottimizzata"] = y_pred_rf
+# soglie_modello["Random Forest Ottimizzata"] = rf_soglie
 
 # xgboost grid search
 print("\n\nXGBOOST - GRID SEARCH")
@@ -390,36 +407,48 @@ xgb_grid.fit(X_fit, y_fit)
 print("Migliori parametri XGB:", xgb_grid.best_params_)
 
 best_xgb_val = xgb_grid.best_estimator_
-proba_val = best_xgb_val.predict_proba(X_val)
-xgb_soglie = ottimizza_soglie(proba_val, y_val)
-print(
-    f"Soglie XGB ottimizzate su validation -> anomalia: {xgb_soglie['soglia_anomalia']:.2f}, "
-    f"attenzione: {xgb_soglie['soglia_attenzione']:.2f}, "
-    f"recall_anomalia: {xgb_soglie['recall_anomalia_val']:.4f}, "
-    f"errori 2->1: {xgb_soglie['errori_2_to_1_val']}"
-)
+# SOGLIE CUSTOM (commentate - soglia standard 0.5 usata):
+# proba_val = best_xgb_val.predict_proba(X_val)
+# xgb_soglie = ottimizza_soglie(proba_val, y_val)
+# print(
+#     f"Soglie XGB ottimizzate su validation -> anomalia: {xgb_soglie['soglia_anomalia']:.2f}, "
+#     f"attenzione: {xgb_soglie['soglia_attenzione']:.2f}, "
+#     f"recall_anomalia: {xgb_soglie['recall_anomalia_val']:.4f}, "
+#     f"errori 2->1: {xgb_soglie['errori_2_to_1_val']}"
+# )
 
 best_xgb = clone(xgb_pipeline).set_params(**xgb_grid.best_params_)
 best_xgb.fit(X_train, y_train)
 
-soglia_anomalia = xgb_soglie["soglia_anomalia"]
-soglia_attenzione = xgb_soglie["soglia_attenzione"]
-proba_train = best_xgb.predict_proba(X_train)
-y_pred_train_custom = predici_con_soglie(proba_train, soglia_anomalia, soglia_attenzione)
-proba = best_xgb.predict_proba(X_test)
-y_pred_custom = predici_con_soglie(proba, soglia_anomalia, soglia_attenzione)
-valuta_modello("XGBoost Ottimizzata (soglie custom)", y_test, y_pred_custom, proba)
-valuta_generalizzazione("XGBoost Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test,
-                       y_pred_custom)
+# SOGLIA STANDARD 0.5: usa predict() direttamente
+# soglia_anomalia = xgb_soglie["soglia_anomalia"]
+# soglia_attenzione = xgb_soglie["soglia_attenzione"]
+# proba_train = best_xgb.predict_proba(X_train)
+# y_pred_train_custom = predici_con_soglie(proba_train, soglia_anomalia, soglia_attenzione)
+# proba = best_xgb.predict_proba(X_test)
+# y_pred_custom = predici_con_soglie(proba, soglia_anomalia, soglia_attenzione)
+# valuta_modello("XGBoost Ottimizzata (soglie custom)", y_test, y_pred_custom, proba)
+# valuta_generalizzazione("XGBoost Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test,
+#                        y_pred_custom)
+proba_train_xgb = best_xgb.predict_proba(X_train)
+y_pred_train_xgb = best_xgb.predict(X_train)
+proba_xgb = best_xgb.predict_proba(X_test)
+y_pred_xgb = best_xgb.predict(X_test)
+valuta_modello("XGBoost Ottimizzata (soglia 0.5)", y_test, y_pred_xgb, proba_xgb)
+valuta_generalizzazione("XGBoost Ottimizzata (soglia 0.5)", y_train, y_pred_train_xgb, y_test, y_pred_xgb)
 
 results.append({
     "Model": "XGBoost Ottimizzata",
-    "Accuracy": accuracy_score(y_test, y_pred_custom),
-    "F1-macro": f1_score(y_test, y_pred_custom, average="macro", zero_division=0)
+    # "Accuracy": accuracy_score(y_test, y_pred_custom),
+    # "F1-macro": f1_score(y_test, y_pred_custom, average="macro", zero_division=0)
+    "Accuracy": accuracy_score(y_test, y_pred_xgb),
+    "F1-macro": f1_score(y_test, y_pred_xgb, average="macro", zero_division=0)
 })
 trained_models["XGBoost Ottimizzata"] = best_xgb
-predizioni_test["XGBoost Ottimizzata"] = y_pred_custom
-soglie_modello["XGBoost Ottimizzata"] = xgb_soglie
+# predizioni_test["XGBoost Ottimizzata"] = y_pred_custom
+# soglie_modello["XGBoost Ottimizzata"] = xgb_soglie
+predizioni_test["XGBoost Ottimizzata"] = y_pred_xgb
+# soglie_modello["XGBoost Ottimizzata"] = xgb_soglie
 
 # final comparison 
 results_df = pd.DataFrame(results).sort_values("F1-macro", ascending=False)
@@ -433,7 +462,7 @@ recall_anomalia = recall_score(y_test, best_y_pred, labels=[2], average="macro",
 print(f"  Recall ANOMALIA: {recall_anomalia:.4f}")
 print(f"\nModello migliore: {best_model_name}  (F1-macro: {best_f1:.4f})")
 
-# cross-validation esterna (stima più robusta delle performance)
+# cross-validation esterna
 if "Data_Ora_Fine" in df.columns and len(X) >= 10:
     cv_esterna = TimeSeriesSplit(n_splits=5)
     cv_descrizione = "TimeSeriesSplit 5-fold"
@@ -454,6 +483,45 @@ print(f"  F1-macro:        {cv_f1_macro.mean():.4f} ± {cv_f1_macro.std():.4f}")
 print(f"  Recall ANOMALIA: {cv_recall_anomalia.mean():.4f} ± {cv_recall_anomalia.std():.4f}")
 print(f"  ROC-AUC OvR w.:  {cv_roc_auc.mean():.4f} ± {cv_roc_auc.std():.4f}")
 
+# CODE TO USE IN CASE YOU WANT TO USE CUSTOM THRESHOLDS:
+"""
+def cv_con_soglia_custom(model, X, y, cv, soglia_anomalia, soglia_attenzione):
+    metriche = {"accuracy": [], "recall_anomalia": [], "f1_macro": [], "roc_auc": []}
+    
+    for train_idx, test_idx in cv.split(X, y):
+        X_cv_train = X.iloc[train_idx]
+        y_cv_train = y.iloc[train_idx]
+        X_cv_test  = X.iloc[test_idx]
+        y_cv_test  = y.iloc[test_idx]
+        
+        m = clone(model)
+        m.fit(X_cv_train, y_cv_train)
+        proba = m.predict_proba(X_cv_test)
+        y_pred = predici_con_soglie(proba, soglia_anomalia, soglia_attenzione)
+        
+        metriche["accuracy"].append(accuracy_score(y_cv_test, y_pred))
+        metriche["recall_anomalia"].append(recall_score(y_cv_test, y_pred, labels=[2], average="macro", zero_division=0))
+        metriche["f1_macro"].append(f1_score(y_cv_test, y_pred, average="macro", zero_division=0))
+        try:
+            metriche["roc_auc"].append(roc_auc_score(y_cv_test, proba, multi_class="ovr", average="weighted"))
+        except:
+            pass
+    
+    return {k: np.array(v) for k, v in metriche.items()}
+
+best_soglie_cv = soglie_modello.get(best_model_name, {})
+soglia_an  = best_soglie_cv.get("soglia_anomalia", 0.5)  if best_soglie_cv else 0.5
+soglia_att = best_soglie_cv.get("soglia_attenzione", 0.5) if best_soglie_cv else 0.5
+
+metriche_cv = cv_con_soglia_custom(best_model, X, y, cv_esterna, soglia_an, soglia_att)
+
+print(f"\nSTIMA ROBUSTA CV ESTERNA ({cv_descrizione}) - soglie custom ({soglia_an:.2f}/{soglia_att:.2f}) - media ± std:")
+print(f"  Accuracy:        {metriche_cv['accuracy'].mean():.4f} ± {metriche_cv['accuracy'].std():.4f}")
+print(f"  Recall ANOMALIA: {metriche_cv['recall_anomalia'].mean():.4f} ± {metriche_cv['recall_anomalia'].std():.4f}")
+print(f"  F1-macro:        {metriche_cv['f1_macro'].mean():.4f} ± {metriche_cv['f1_macro'].std():.4f}")
+print(f"  ROC-AUC:         {metriche_cv['roc_auc'].mean():.4f} ± {metriche_cv['roc_auc'].std():.4f}")
+"""
+
 # confusion matrix
 print(f"\nMatrice di confusione - {best_model_name}:")
 cm = confusion_matrix(y_test, best_y_pred)
@@ -471,7 +539,7 @@ print(f"Matrice salvata in {OUTPUT_CM_PATH}")
 os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
 joblib.dump(best_model, MODEL_PATH)
 
-best_soglie = soglie_modello.get(best_model_name)
+# best_soglie = soglie_modello.get(best_model_name)
 
 parametri_anomaly = {
     "articoli_top": articoli_top.tolist(),
