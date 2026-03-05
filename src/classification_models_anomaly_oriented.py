@@ -11,13 +11,13 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
-from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.base import clone
-warnings.filterwarnings("ignore")
+from xgboost import XGBClassifier
 from feature_engineering import pipeline_classificazione
+warnings.filterwarnings("ignore")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
@@ -44,7 +44,7 @@ df['ARTICOLO_grouped'] = df['ARTICOLO_grouped'].fillna('ALTRO').astype(str)
 
 df = pipeline_classificazione(df)
 
-# class definition (target binario)
+# class definition
 p85 = df['Indice_Inefficienza'].quantile(0.85)
 
 print(f"Soglia ANOMALIA (85° percentile): {p85:.4f}")
@@ -131,12 +131,14 @@ else:
 # n_pos → numero di campioni classe 1 (anomalia)
 # scale_pos_weight ≈ normali / anomalie ≈ n%
 # dice a xgboost: sbagliare un’anomalia è circa n volte più grave che sbagliare un normale.
-
+# spw calcolato su y_fit: coerente con la grid search che gira su X_fit.
+# Con split temporale y_fit (dati piu vecchi) puo avere meno anomalie
+# di y_train, dando uno spw piu alto che aiuta XGBoost sui dati recenti.
 n_neg = int((y_fit == 0).sum())
 n_pos = int((y_fit == 1).sum())
 spw = round(n_neg / max(n_pos, 1), 2)
-print(f"scale_pos_weight: {spw:.2f}")
-    
+print(f"scale_pos_weight (calcolato su y_fit): {spw:.2f}")
+
 # columns identification
 categorical_cols = [
     col for col in [
@@ -501,14 +503,10 @@ else:
     cv_descrizione = "StratifiedKFold 5-fold"
 
 cv_acc = cross_val_score(best_model, X, y, cv=cv_esterna, scoring="accuracy", n_jobs=-1)
-cv_f1 = cross_val_score(best_model, X, y, cv=cv_esterna, scoring="f1", n_jobs=-1)
-cv_recall = cross_val_score(best_model, X, y, cv=cv_esterna, scoring="recall", n_jobs=-1)
 cv_roc_auc = cross_val_score(best_model, X, y, cv=cv_esterna, scoring="roc_auc", n_jobs=-1)
 
 print(f"\nSTIMA ROBUSTA CV ESTERNA ({cv_descrizione}) - media ± std:")
 print(f"  Accuracy:       {cv_acc.mean():.4f} ± {cv_acc.std():.4f}")
-print(f"  F1 ANOMALIA:    {cv_f1.mean():.4f} ± {cv_f1.std():.4f}")
-print(f"  Recall ANOMALIA:{cv_recall.mean():.4f} ± {cv_recall.std():.4f}")
 print(f"  ROC-AUC:        {cv_roc_auc.mean():.4f} ± {cv_roc_auc.std():.4f}")
 
 # confusion matrix
@@ -1070,7 +1068,3 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 #   F1 ANOMALIA:    0.4746 ± 0.1738
 #   Recall ANOMALIA:0.4552 ± 0.2727
 #   ROC-AUC:        0.8893 ± 0.0436
-
-
-
-

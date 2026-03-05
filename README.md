@@ -1,5 +1,7 @@
 # Inefficiency Analysis and Optimization of Theoretical Production Times through Machine Learning
 
+## 🎯 Project Objective
+
 This project develops machine learning models to analyze and predict production inefficiencies in industrial machinery and improve the estimation of theoretical processing times. Using regression and classification techniques, the system identifies operational anomalies and redefines theoretical times more consistently with actual times. The goal is to support industrial decision-making with quantitative and replicable predictive tools.
 
 ## 1. Features 📊
@@ -16,8 +18,6 @@ This project develops machine learning models to analyze and predict production 
 - Automatic saving of results to CSV (`predictions.csv` or custom path).
 - Separate scripts for model training/tuning and a single script (`main.py`) for inference.
 
----
-
 ## 2. Installation 📦
 
 ### Prerequisites
@@ -33,7 +33,7 @@ This project develops machine learning models to analyze and predict production 
     cd tesi_efficienza_macchine
 ```
 
-#### - Create and activate the virtual environment
+### - Create and activate the virtual environment
 
 ```bash
     python -m venv venv
@@ -51,14 +51,12 @@ This project develops machine learning models to analyze and predict production 
     source venv/bin/activate
 ```
 
-#### - Install dependencies
+### - Install dependencies
 
 ```bash
     pip install --upgrade pip
     pip install -r requirements.txt
 ```
-
----
 
 ## 3. Usage 🚀
 

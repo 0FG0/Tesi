@@ -12,10 +12,11 @@
 # the new datas and produce an output where we want the outputs to be
 
 # Used models:
-# 1. Regressione Indice_Inefficienza   ->  models/regression/best_regressione_inefficienza.pkl
-# 2. Regressione Tempo Lavoraz. ORE    ->  models/regression/best_regressione_time.pkl
-# 3. Classificazione standard          ->  models/classification/best_classificazione_standard.pkl
-# 4. Classificazione anomaly-oriented  ->  models/classification/best_classificazione_anomaly.pkl
+# 1. Regressione Indice_Inefficienza      ->  models/regression/best_regressione_inefficienza.pkl
+# 2. Regressione Tempo Lavoraz. ORE       ->  models/regression/best_regressione_time.pkl
+# 3. Classificazione standard             ->  models/classification/best_classificazione_standard.pkl
+# 4. Classificazione anomaly-oriented     ->  models/classification/best_classificazione_anomaly.pkl
+# 5. Classificazione anomaly-oriented-BD  ->  models/classification/best_classificazione_anomaly_BD.pkl
 
 # outputs structure:
 # same columns of the data imported plus the four colums of models ouputs
@@ -55,6 +56,11 @@ PATHS = {
         "model": os.path.join(MODELS_DIR, "classification", "best_classificazione_anomaly.pkl"),
         "params": os.path.join(MODELS_DIR, "classification", "parametri_classificazione_anomaly.pkl"),
     },
+    "classificazione_anomaly_BD": {
+        "model": os.path.join(MODELS_DIR, "classification", "best_classificazione_anomaly_BD.pkl"),
+        "params": os.path.join(MODELS_DIR, "classification", "parametri_classificazione_anomaly_BD.pkl"),
+    },
+
 }
 
 LABELS = {0: "NORMALE", 1: "ATTENZIONE", 2: "ANOMALIA"}
