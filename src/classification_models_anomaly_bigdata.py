@@ -146,6 +146,10 @@ for col in categorical_cols:
         X_train[col] = X_train[col].astype('string').fillna('MISSING')
     if col in X_test.columns:
         X_test[col] = X_test[col].astype('string').fillna('MISSING')
+    if col in X_fit.columns:
+        X_fit[col] = X_fit[col].astype('string').fillna('MISSING')
+    if col in X_val.columns:
+        X_val[col] = X_val[col].astype('string').fillna('MISSING')
 
 # preprocessing
 # for linear models (scaling + one hot)
@@ -316,7 +320,7 @@ rf_param_grid = {
     "model__n_estimators": [200, 400],
     "model__max_depth": [None, 10, 20],
     "model__min_samples_split": [2, 5],
-    "model__min_samples_leaf": [1, 3]
+    "model__min_samples_leaf": [2, 5]
 }
 
 rf_grid = GridSearchCV(
@@ -353,8 +357,7 @@ best_rf.fit(X_train, y_train)
 # proba = best_rf.predict_proba(X_test)
 # y_pred_custom = predici_con_soglie(proba, soglia_anomalia, soglia_attenzione)
 # valuta_modello("Random Forest Ottimizzata (soglie custom)", y_test, y_pred_custom, proba)
-# valuta_generalizzazione("Random Forest Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test,
-#                        y_pred_custom)
+# valuta_generalizzazione("Random Forest Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test, y_pred_custom)
 proba_train_rf = best_rf.predict_proba(X_train)
 y_pred_train_rf = best_rf.predict(X_train)
 proba_rf = best_rf.predict_proba(X_test)
@@ -376,6 +379,14 @@ predizioni_test["Random Forest Ottimizzata"] = y_pred_rf
 
 # xgboost grid search
 print("\n\nXGBOOST - GRID SEARCH")
+
+# sample weights for XGBoost (class_weight='balanced' equivalent for multi-class)
+_n_fit = len(y_fit)
+_class_counts_fit = y_fit.value_counts()
+sample_weight_fit = y_fit.map(
+    lambda c: _n_fit / (3 * _class_counts_fit.get(c, 1))
+).to_numpy()
+print(f"Pesi classi su y_fit: { {c: round(_n_fit / (3 * _class_counts_fit.get(c, 1)), 3) for c in sorted(_class_counts_fit.index)} }")
 
 xgb_pipeline = Pipeline([
     ("preprocessor", preprocessor_tree),
@@ -403,7 +414,7 @@ xgb_grid = GridSearchCV(
     n_jobs=-1,
     verbose=1
 )
-xgb_grid.fit(X_fit, y_fit)
+xgb_grid.fit(X_fit, y_fit, model__sample_weight=sample_weight_fit)
 print("Migliori parametri XGB:", xgb_grid.best_params_)
 
 best_xgb_val = xgb_grid.best_estimator_
@@ -428,8 +439,7 @@ best_xgb.fit(X_train, y_train)
 # proba = best_xgb.predict_proba(X_test)
 # y_pred_custom = predici_con_soglie(proba, soglia_anomalia, soglia_attenzione)
 # valuta_modello("XGBoost Ottimizzata (soglie custom)", y_test, y_pred_custom, proba)
-# valuta_generalizzazione("XGBoost Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test,
-#                        y_pred_custom)
+# valuta_generalizzazione("XGBoost Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test, y_pred_custom)
 proba_train_xgb = best_xgb.predict_proba(X_train)
 y_pred_train_xgb = best_xgb.predict(X_train)
 proba_xgb = best_xgb.predict_proba(X_test)
@@ -547,9 +557,9 @@ parametri_anomaly = {
     "soglia_attenzione": SOGLIA_ATTENZIONE,
     "soglia_anomalia": SOGLIA_ANOMALIA,
     "tipo_soglie": "percentili_60_85",
-    "soglia_proba_anomalia": best_soglie["soglia_anomalia"] if best_soglie else None,
-    "soglia_proba_attenzione": best_soglie["soglia_attenzione"] if best_soglie else None,
-    "soglie_ottimizzate_su_validation": bool(best_soglie),
+    # "soglia_proba_anomalia": best_soglie["soglia_anomalia"] if best_soglie else None,
+    # "soglia_proba_attenzione": best_soglie["soglia_attenzione"] if best_soglie else None,
+    # "soglie_ottimizzate_su_validation": bool(best_soglie),
 }
 joblib.dump(parametri_anomaly, PARAMS_PATH)
 

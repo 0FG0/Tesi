@@ -159,6 +159,10 @@ for col in categorical_cols:
         X_train[col] = X_train[col].astype('string').fillna('MISSING')
     if col in X_test.columns:
         X_test[col] = X_test[col].astype('string').fillna('MISSING')
+    if col in X_fit.columns:
+        X_fit[col] = X_fit[col].astype('string').fillna('MISSING')
+    if col in X_val.columns:
+        X_val[col] = X_val[col].astype('string').fillna('MISSING')
 
 # preprocessing
 # for linear models (scaling + one hot)
@@ -392,8 +396,7 @@ best_rf.fit(X_train, y_train)
 # proba = best_rf.predict_proba(X_test)
 # y_pred_custom = predici_con_soglie(proba, soglia_anomalia)
 # valuta_modello("Random Forest Ottimizzata (soglie custom)", y_test, y_pred_custom, proba)
-# valuta_generalizzazione("Random Forest Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test,
-#                        y_pred_custom)
+# valuta_generalizzazione("Random Forest Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test, y_pred_custom)
 proba_train_rf = best_rf.predict_proba(X_train)
 y_pred_train_rf = best_rf.predict(X_train)
 proba_rf = best_rf.predict_proba(X_test)
@@ -423,18 +426,7 @@ xgb_pipeline = Pipeline([
         verbosity=0,
         objective="binary:logistic",
         eval_metric="logloss",
-        scale_pos_weight=spw,
-        n_estimators=200,
-        max_depth=3,
-        learning_rate=0.05,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        min_child_weight=5,
-        reg_alpha=0.5,
-        reg_lambda=3.0,
-        gamma=1.0,
         tree_method="hist",
-        use_label_encoder=False
     ))
 ])
 
@@ -483,8 +475,7 @@ best_xgb.fit(X_train, y_train)
 # proba = best_xgb.predict_proba(X_test)
 # y_pred_custom = predici_con_soglie(proba, soglia_anomalia)
 # valuta_modello("XGBoost Ottimizzata (soglie custom)", y_test, y_pred_custom, proba)
-# valuta_generalizzazione("XGBoost Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test,
-#                        y_pred_custom)
+# valuta_generalizzazione("XGBoost Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test, y_pred_custom)
 proba_train_xgb = best_xgb.predict_proba(X_train)
 y_pred_train_xgb = best_xgb.predict(X_train)
 proba_xgb = best_xgb.predict_proba(X_test)
@@ -572,7 +563,6 @@ print(f"  Recall ANOMALIA: {metriche_cv['recall'].mean():.4f} ± {metriche_cv['r
 print(f"  F1 ANOMALIA:     {metriche_cv['f1'].mean():.4f} ± {metriche_cv['f1'].std():.4f}")
 print(f"  ROC-AUC:         {metriche_cv['roc_auc'].mean():.4f} ± {metriche_cv['roc_auc'].std():.4f}")
 """
-
 
 # confusion matrix
 print(f"\nMatrice di confusione - {best_model_name}:")
@@ -832,14 +822,19 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 # quantitativi di dati in modo tale che i modelli possano essere addestrati correttemente 
 # senza rischiare di inciampare nell'overfitting.
 
-# COMMENTO DATI OTTENUTI
+# COMMENTO DATI OTTENUTI 
+
+
+# ===========================================================================================================================
+# ========================================= VANNO AGGIORNATI ================================================================
+# ===========================================================================================================================
 
 # metriche calcolate:
 # ACCURACY = calcola la percentuale di risposte corrette
 
 # F1-SCORE = combina le metriche precisione e richiamo in un unico valore 
 # Precisione (Precision): Indica quanti dei casi positivi predetti sono effettivamente positivi (precisione delle previsioni positive).
-# Richiamo (Recall/Sensitivity): Indica quanti dei casi positivi reali sono stati effettivamente identificati dal modello
+# Richiamo (Recall/Sensitivity): Indica quanti dei casi positivi identificati dal modello sono effettivamente reali (capacità di trovare tutti i casi positivi). 
 
 # ROC-AUC = misura quanto un modello è in grado di distinguere tra le classi a diversi livelli di soglia.
 # Curva ROC (Receiver Operating Characteristic): È un grafico che mostra la performance del modello tracciando due parametri
@@ -962,11 +957,9 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 # 1 predizione in più o in meno sulla classe ANOMALIA (12 campioni nel test) sposta 
 # il recall dell'8%. I risultati sono promettenti ma andrebbero confermati su più dati.
 
-
-
-
-
-# ============== OUTPUT ==============
+# ===============================================================================================
+# ========================================= OUTPUT ==============================================
+# ===============================================================================================
 
 # Soglia ANOMALIA (85° percentile): 1.4311
 # DISTRIBUZIONE CLASSI:
