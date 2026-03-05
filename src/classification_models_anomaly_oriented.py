@@ -504,7 +504,7 @@ print(results_df.to_string(index=False))
 best_model_name = max(results, key=lambda x: x["Recall-Anomalia"])["Model"]
 best_model = trained_models[best_model_name]
 best_recall = next(r["Recall-Anomalia"] for r in results if r["Model"] == best_model_name)
-best_f1     = next(r["F1-Anomalia"]     for r in results if r["Model"] == best_model_name)
+best_f1 = next(r["F1-Anomalia"] for r in results if r["Model"] == best_model_name)
 best_y_pred = predizioni_test[best_model_name]
 recall_anomalia = recall_score(y_test, best_y_pred, pos_label=1, zero_division=0)
 print(f"  Recall ANOMALIA: {recall_anomalia:.4f}")
@@ -597,16 +597,20 @@ joblib.dump(parametri_anomaly, PARAMS_PATH)
 print(f"Modello salvato in {MODEL_PATH}")
 print(f"Parametri salvati in {PARAMS_PATH}")
 
-# ****** APPUNTI ******
+# ******************************************** APPUNTI ********************************************
 
-# (i file di regressione non sono adattati ad un dataset di piccole dimensioni)
+#         (i file di regressione non sono adattati ad un dataset di piccole dimensioni)
+
+# ===================================================================================================
+# ============================ INTRODUZIONE DIFFERENZE ANOMALY E BIGDATA ============================
+# ===================================================================================================
 
 # i file classification_models_anomaly_oriented e classification_models_anomaly_bigdata hanno lo 
 # stesso obbiettivo ovvero predire il livello di inefficienza della macchina a partire dalle 
 # feature disponibili. La differenza non è nello scopo, ma nella strategia di modellazione, 
-# che cambia in funzione della quantità di dati disponibile. infatti classification_models_anomaly_oriented
-# è stato fatto in modo tale che i modelli abbiano delle buone prestazioni nonstante la poca quantità
-# di dati su cui sono addestrati.
+# che cambia in funzione della quantità di dati disponibile. 
+# infatti classification_models_anomaly_oriented è stato fatto in modo tale che i modelli abbiano
+# delle buone prestazioni nonstante la poca quantità di dati su cui sono addestrati.
 
 # in classification_models_anomaly_oriented si è eseguito un Approccio più RIGIDO (Small Data Oriented)
 # il dataset su cui sono addestrati i modelli è di 387 righe circa
@@ -616,40 +620,58 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 # Alta instabilità delle metriche (1 sola predizione può cambiare recall di ~8%)
 # Per questo motivo i modelli sono stati progettati per essere Più regolarizzati, Meno complessi, Più conservativi
 
-# questione importante delle soglie: 
+# ===================================================================================================
+# ==================================== QUESTIONE DELLE SOGLIE =======================================
+# ===================================================================================================
+
 # le soglie sono fondamentali in quanto sono quelle che decidono quando si avrà un anomalia o meno
 # Un modello (come XGBoost, Random Forest ecc.) non predice direttamente “anomalia” o “normale”.
 # Predice invece una probabilità in percentuale. bisogna dunque decidere quando questa percentuale
 # è sufficientemente alta perchè possa essere considerata come un anomalia ovvero la soglia.
 # con la soglia a 0.5 significa che quando il modello valuta che la probabilità che si verifichi una
 # anomalia è > 50% allora la considera come tale. abbassando la soglia a 0.15 ad esempio significa che
-# quando il modello prevede che la macchina ha una probabilità che è > 15% allora la considera come anomalia
-# facendo così si trovano più anomalie ma aumentano i falsi allarmi.
-# questa scelta deve dipendere dall'azienda. se avere un anomalia è un grande costo significa che sarà più
-# adatto impostare una soglia bassa ad esempio con min_precision = 0.25 in questo modo significa che 
-# almeno il 25% delle previsioni classificate come anomalia devono essere effettivamente anomalie.
-# ciò significa che è accettabile avere un 75% di falsi allarmi.
-# ciò va bene quando  per l'azienda è meglio avere falsi allarmi piuttosto di rischiare di perdere un anomalia. 
-# per il progetto ho deciso di utilizzare una soglia minima di 0.5 che è la soglia standard
-# dunque non utilizzare le soglie custom in quanto è una soglia che ti permette di non avere 
+# quando il modello prevede che la macchina ha una probabilità che è > 15% allora la considera come 
+# anomalia facendo così si trovano più anomalie ma aumentano i falsi allarmi.
+# questa scelta deve dipendere dall'azienda. Se avere un anomalia è un grande costo significa che 
+# sarà più adatto impostare una soglia bassa ad esempio con min_precision = 0.25 in questo modo 
+# significa che almeno il 25% delle previsioni classificate come anomalia devono essere 
+# effettivamente anomalie. Ciò significa che è accettabile avere un 75% di falsi allarmi.
+# Ciò va bene quando  per l'azienda è meglio avere falsi allarmi piuttosto di rischiare di perdere
+# un anomalia. per il progetto ho deciso di utilizzare una soglia minima di 0.5 che è la soglia 
+# standard dunque non utilizzare le soglie custom in quanto è una soglia che ti permette di non avere 
 # così tanti falsi allarmi ma allo stesso modo non perdersi tante anomalie.
-# stessa cosa è stata fatta anche per anomaly_BD
+# stessa cosa è stata fatta anche per anomaly_BD.
+# inizialmente in classificazione standard sono state scelte delle soglie basate sulla 
+# media e l'std il problema è che media e std sono influenzati dalla skweness e non
+# hanno risultato dare valori particolarmente performanti
+# modificando il codice cambiando le soglie usando i quantili (60° percentile) (85° percentile) 
+# i modelli hanno performato in maniera decisamente migliore
+# al posto della media e dell'std che sono più influenzati dalla skweness in quanto i dati 
+# presentano una lunga coda sulla destra e la maggiorparte dei dati sulla sinistra con il 
+# valore di 1.00 ovvero che la macchina performa come dovrebbe e solo una piccola percentuale
+# di volte risultano esserci degli outliers quando la macchina produce con un tempo maggiore
+# o molto maggiore rispetto al tempo previsto, essendo influenzati da ciò le soglie media e std
+# non hanno risultato dare valori particolarmente performanti.
 
-# DIFFERENZE rispetto ad anomaly_BD:
+# ===================================================================================================
+# ============================ DIFFERENZE TECNICHE TRA ANOMALY E BIGDATA ============================
+# ===================================================================================================
+
+# STRUTTURA DI ANOMALY:
 
 # 1) RIDUZIONE DEL PROBLEMA: classificazione binaria
-# 
+ 
 # p85 = df['Indice_Inefficienza'].quantile(0.85)
-# 
+ 
 # def classifica_inefficienza(valore):
 #     if valore > SOGLIA_ANOMALIA:
 #         return 1
 #     return 0
 # Classi:
-# 
+ 
 # 0 → NORMALE
 # 1 → ANOMALIA
-# 
+ 
 # così a differenza di anomaly_db si è eliminata la classe "ATTENZIONE" in quanto # 
 # Con pochi dati: ATTENZIONE è una classe intermedia di conseguenza ha pochi campioni ed 
 # È statisticamente simile sia a NORMALE che ad ANOMALIA, ciò comporta ad avere del rumore decisionale
@@ -657,10 +679,10 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 # così la separabilità e riducendo l'instabilità del modello in questo modo ci permette 
 # di focalizzarsi solo sull'individuazione delle anomalie reali
 
-# 2) MODELLI PIù RIGIDI (regularizzati)
-# 
+# 2) MODELLI PIù RIGIDI (regolarizzati)
+ 
 # Esempio XGBoost nel primo file:
-# 
+ 
 # XGBClassifier(
 #     max_depth=4,
 #     min_child_weight=5,
@@ -671,28 +693,18 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 #     colsample_bytree=0.8,
 #     scale_pos_weight=spw
 # )
-# 
+ 
 # Qui si nota che inseriamo una profondità limitata, Penalizzazioni di L1 e L2 elevate
-# gamma > 0 -> crea meno split inutili, subsample < 1 -> riduce la varianza e scale_pos_weight calibrato
+# gamma > 0 -> crea meno split inutili, 
+# subsample < 1 -> riduce la varianza e scale_pos_weight calibrato
 
-# 3) OTTIMIZZAZIONE ORIENTATA AL RECALL delle anomalie
-
-# rf_grid = GridSearchCV(
-#     ...
-#     scoring=make_scorer(recall_score, pos_label=1)
-# )
-# 
-# Viene massimizzato il recall della classe ANOMALIA
-# Inoltre viene ottimizzata la soglia probabilistica: soglie_anomalia = np.arange(0.05, 0.91, 0.01)
-# Questo permette di abbassare la soglia rispetto a 0.5, ridurre i falsi negativi e accettare qualche 
-# falso positivo in più in qunto è meglio segnalare un’anomalia in più che perderne una reale.
-
-# 4. SCALE_POS_WEIGHT
+# 3. SCALE_POS_WEIGHT
 # spw = round(n_neg / max(n_pos, 1), 2)
 # Serve per compensare lo sbilanciamento con pochi dati è fondamentale perché
 # la classe anomalia è minoritaria ed il modello tenderebbe a ignorarla
 
-# ANOMALY_BD
+# STRUTTURA DI BIGDATA:
+
 # è pensato per dataset con elevata numerosità dove il rischio di overfitting è molto più basso
 
 # 1). CLASSIFICAZIONE A 3 CLASSI
@@ -704,7 +716,7 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 #         return 1
 #     else:
 #         return 2
-# 
+ 
 # 0 → NORMALE
 # 1 → ATTENZIONE
 # 2 → ANOMALIA
@@ -730,16 +742,8 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 # Qui: max_depth può arrivare a 10, C'è minore regolarizzazione esplicita, il modello 
 # fa una ricerca più ampia nello spazio iperparametri
 # Questo è sostenibile solo con molti dati.
- 
-# 3) OTTIMIZZAZIONE SOGLIE DOPPIA 
 
-# predici_con_soglie(proba, soglia_anomalia, soglia_attenzione)
- 
-# Qui vengono ottimizzate due soglie la soglia probabilità ANOMALIA e la soglia probabilità ATTENZIONE
-# Questo rende il modello più flessibile e più fine nella separazione, ciò lo rende 
-# più instabile con pochi dati
-
-# 4) METRICA DI OTTIMIZZAZIONE DIVERSA
+# 3) METRICA DI OTTIMIZZAZIONE DIVERSA
  
 # scoring = make_scorer(recall_score, labels=[2], average="macro")
  
@@ -752,8 +756,9 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 # accesso ad una dimensione di dati limitata come quella che abbiamo noi il file anomaly_db
 # porterebbe ad ancora più overfitting risultando così in dati poco affidabili in quanto falsati
 
-
-# FUNZIONAMENTO DI CLASSFIFICATION MODELS ANOMALY ORIENTED E CLASSIFICATION MODELS STANDARD:
+# ===================================================================================================
+# ============================ FUNZIONAMENTO TECNICO DI CLASSIFICAZIONE =============================
+# ===================================================================================================
 
 # prima di addestrare il modello devo droppare delle colonne per far si che l'addestramento
 # sia sensato e privo di overfitting ovvero chiaramente togliendo prima di tutte la colonna 
@@ -802,160 +807,119 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 # il problema è che in questo modo si perde l'identità dell'articolo ad esempio nel nostro caso se
 # una macchina è inefficiente ogni volta che deve produrre un mouse, il modello ora considera sia il mouse
 # che la tastiera come lo stesso oggetto avendo la stessa frequenza in questo modo non è in grado di distinguere
-# il fatto che magari la produzione del mouse è inefficiente mentre quella della tastiera si
+# il fatto che magari la produzione del mouse è inefficiente mentre quella della tastiera si.
 
-# il campione di dati su cui vengono addestrati i modelli è molto limitato, poco meno di 400 righe per i 
-# modelli è veramente poco per avere delle performance reali buone senza overfitting.
-# i modelli che ho addestrato specialmente xgboost ottimizzato sono molto rigidi
-# cercando di ridurre quanto possibile l'overfitting anche se come vediamo dall'output c'è sempre, data 
-# la poca quantità di dati, inoltre a causa della rigidità di questi modelli le performance non sono
-# eccellenti. per dati con quantità di righe maggiori, si potrebbe pensare di addestrare modelli 
-# più complessi e meno regolarizzati avendo così in questo modo dei risultati molto più performanti
-# ma con 387 righe si rischia di avere delle performance falsate.
+# scoring che è quel fattore che valuta i modelli basandoti solo su quanto sono bravi a identificare 
+# correttamente gli esempi della classe ANOMALIE, ignorando le altre classi durante l'ottimizzazione
 
-# i risultati di anomaly oriented cercando di evitare l'overfitting con modelli più rigidi sono 
-# peggiori o poco meglio su determinati valori rispetto a classiffication standard.
+# ===================================================================================================
+# ==================================== COMMENTO DATI OTTENUTI =======================================
+# ===================================================================================================
 
-# classification_models_anomaly_bidata è il file di classification anomaly oriented ma 
-# dove i modelli vengono addestrati in maniera più aggressiva senza preoccuparsi troppo 
-# dell'overfitting, è dunque più adatto da usare in situazioni per le quali si hanno grandi
-# quantitativi di dati in modo tale che i modelli possano essere addestrati correttemente 
-# senza rischiare di inciampare nell'overfitting.
+# METRICHE:
 
-# COMMENTO DATI OTTENUTI 
+# ACCURACY  = calcola la percentuale di risposte corrette
+# F1-SCORE  = combina le metriche precisione e richiamo in un unico valore 
+# PRECISION = Indica quanti tra tutti i casi positivi (anomalie) che il modello ha segnalato sono effettivamente reali.
+# RECALL    = Indica quanti tra tutti i casi positivi (anomalie) reali il modello è riuscito a predire.
+# ROC-AUC   = misura quanto un modello è in grado di distinguere tra le classi a diversi livelli di soglia.
 
-
-# ===========================================================================================================================
-# ========================================= VANNO AGGIORNATI ================================================================
-# ===========================================================================================================================
-
-# metriche calcolate:
-# ACCURACY = calcola la percentuale di risposte corrette
-
-# F1-SCORE = combina le metriche precisione e richiamo in un unico valore 
-# Precisione (Precision): Indica quanti dei casi positivi predetti sono effettivamente positivi (precisione delle previsioni positive).
-# Richiamo (Recall/Sensitivity): Indica quanti dei casi positivi identificati dal modello sono effettivamente reali (capacità di trovare tutti i casi positivi). 
-
-# ROC-AUC = misura quanto un modello è in grado di distinguere tra le classi a diversi livelli di soglia.
 # Curva ROC (Receiver Operating Characteristic): È un grafico che mostra la performance del modello tracciando due parametri
 # al variare della soglia di classificazione:
 # True Positive Rate (TPR) / Sensibilità / Recall: Indica la percentuale di casi positivi correttamente identificati.
 # False Positive Rate (FPR): Indica la percentuale di casi negativi erroneamente classificati come positivi.
 # AUC (Area Under the Curve): Rappresenta l'area geometrica sottesa alla curva ROC.
-
 # F1-score (per classe) = Media armonica di precision e recall di quella singola classe
-# F1-macro = Media semplice degli F1-score di tutte le classi (NORMALE + ATTENZIONE + ANOMALIA / 3), 
-# senza pesare per quante osservazioni ha ogni classe
-# F1-weighted = Media degli F1-score pesata per il numero di campioni (support) di ogni classe
+# F1-macro = Media semplice degli F1-score di tutte le classi, senza pesare per quante osservazioni ha ogni classe
+# F1-weighted = Media degli F1-score pesata per il numero di campioni di ogni classe
 
-# inizialmente bisogna decidere le soglie ovvero trasformare l'Indice_Inefficienza in classi discrete.
-# in base alle quali classifichiamo come normale, attenzione e anomalia  i risultati che otteniamo. 
-# soglie utilizzate nella classificazione standard basate sulla deviazione standard:
-#   NORMALE     ≤ mean
-#   ATTENZIONE  < mean < mean + 1std
-#   ANOMALIA    > mean + 1std
-# in base ai nostri dati:
-#   NORMALE     ≤ 1.185 -> lavorazione nella norma
-#   ATTENZIONE  1.185 - 1.47 -> lieve inefficienza, da monitorare
-#   ANOMALIA    > 1.47 -> inefficienza significativa
-# la media e l'std sono però più influenzati dalla skweness e non
-# hanno risultato dare valori particolarmente performanti
-
-# risultati allenando il modello in maniera standard:
-
-# Distribuzione classi:
-# NORMALE → 65.6%
-# ATTENZIONE → 19.6%
-# ANOMALIA → 14.7%
+# Definizione delle anomalie
+# Le anomalie sono state definite utilizzando una soglia pari all'85° percentile del rapporto tra 
+# tempo reale e tempo teorico.
  
-# Il migliore è:
+# Soglia anomalia: 1.4311
  
+# Se il tempo reale supera il 143% del tempo teorico l'osservazione viene classificata come anomalia
+ 
+# Distribuzione delle classi
+# Dataset sbilanciato:
+ 
+# Classe	    Campioni	Percentuale
+# NORMALE	         329	        85%
+# ANOMALIA	      58	        15%
+ 
+# Per gestire lo sbilanciamento è stato utilizzato il parametro scale_pos_weight = 6.26 
+# che aumenta il peso della classe ANOMALIA durante l'addestramento.
+ 
+# Confronto dei modelli base
+# Sono stati confrontati cinque modelli:
+ 
+# Logistic Regression
+# Decision Tree
+# Random Forest
 # XGBoost
-# Accuracy: 0.756
-# F1-macro: 0.616
-# ROC-AUC: 0.8921
-# È coerente che batta Random Forest: con dataset piccoli e non lineari, XGBoost tende a essere più stabile.
+# SVM
  
-# Logistic buono con (0.68 accuracy)
-# Random Forest base collassa su ATTENZIONE
-# XGBoost mantiene equilibrio sulle 3 classi
-# Classe ATTENZIONE
-# In tutti i modelli:
-# Precision bassa (~0.42 XGB)
-# Recall medio-bassa (~0.33)
-# questo accade in quanto ATTENZIONE è una classe di confine statistico.
-# È la zona grigia tra normale e anomalia.
-# Il modello fa fatica perché i dati sono simili a NORMALE e le feature
-# probabilmente non separano abbastanza bene.
-# 
-# come si può notare dalla matrice confusione i dati che vengono predetti meglio sono i dati
-# relativi alla classe normale (47), mentre i peggiori sono della classe attenzione (5) e anomalie (7)
-
-# risultati allenando il modello in maniera anomaly oriented:
-
-# modificando il codice cambiando le soglie usando i quantili (60° percentile) (85° percentile) al posto 
-# della media e dell'std che sono più influenzati dalla skweness in quanto i dati presentano una lunga coda 
-# sulla destra e la maggiorparte dei dati sulla sinistra con il valore di 1.00 ovvero che la macchina performa 
-# come dovrebbe e solo una piccola percentuale di volte risultano esserci degli outliers quando la macchina
-# produce con un tempo maggiore o molto maggiore rispetto al tempo previsto, essendo influenzati da ciò
-# non hanno risultato dare valori particolarmente performanti.
-
-# soglie utilizzate nella classificazione standard basate sulla deviazione standard:
-#   NORMALE     ≤ 60° percentile
-#   ATTENZIONE  < 60° percentile < 85° percentile
-#   ANOMALIA    > 85° percentile
-# in base ai nostri dati:
-#   NORMALE     ≤ 1.1466 -> lavorazione nella norma
-#   ATTENZIONE  1.1466 - 1.4311 -> lieve inefficienza, da monitorare
-#   ANOMALIA    > 1.4311 -> inefficienza significativa
-
-# addestrando inoltre i modelli ottimizzati in modo tale che non 
-# sia semplicemente una valutazione standard ma aumentando il recall delle anomalie ovvero:
-# al posto di utilizzare y_pred = best_xgb.predict(X_test)
-# che non permette di scegliere la soglia ma usa di default 0.5 
-# rendendo il modello più bravo a non lasciarsi sfuggire i casi positivi reali, 
-# accettando però il rischio di accusare qualche innocente per errore.
-
-# nella classificazione anomaly oriented si è inoltre cambiato lo 
-# scoring che è quel fattore che valuta i modelli basandoti solo su quanto sono bravi a identificare 
-# correttamente gli esempi della classe ANOMALIE, ignorando le altre classi durante l'ottimizzazione
-  
-# risultati allenando il modello aumentando le recall delle anomalie:
-# Distribuzione classi:
-# NORMALE → (59.9%)
-# ATTENZIONE → (25.1%)
-# ANOMALIA → (15.0%)
-# Il migliore è chiaramente:
-# XGBoost Ottimizzata
-# Accuracy: 0.794
-# F1-macro: 0.759
-# ROC-AUC: 0.9148
+# Le metriche principali analizzate sono:
  
-# come è possibile notare rispetto ai dati precedenti ogni metrica del modello che ha performato
-# meglio (sempre XGBoost Ottimizzata) sono tutti migliorati
+# Accuracy
+# Recall della classe anomalia
+# F1-score della classe anomalia
+# ROC-AUC
  
-# Logistic è migliorato anch'esso da 0.68 a 0.74 di accuracy
-  
-# c'è stato un grosso miglioramento nei risultati di tutti i modelli, guardando la matrice di confusione
-# però notiamo che i valori della classe normale sono diminuiti e sono ora (39), diminuiscono perché la
-# soglia è scesa (60° percentile (1.1466) rispetto alla media (1.1855)), il miglioramento vero però è che
-# ora ATTENZIONE e ANOMALIA hanno più campioni, i valori della classe attenzione ora sono (14), un netto
-# miglioramento rispetto ai (5) precedente seppur ancora un dato abbastanza basso, (9) invece nella classe
-# anomalia, piccolo miglioramente rispetto al (7) precedente. 
-# un altro dato molto interessante è il ROC-AUC di XGBoost Ottimizzato che sale da 0.9037 a 0.9148. Questo 
-# è particolarmente significativo perché ROC-AUC misura la capacità discriminativa del modello indipendentemente
-# dalla soglia di classificazione, quindi il modello è genuinamente migliorato nella separazione delle classi, 
-# non solo per effetto delle soglie percentili.
+# Poiché l'obiettivo è individuare inefficienze produttive, la metrica più importante è la 
+# Recall della classe anomalia, cioè la capacità del modello di individuare più anomalie possibili.
  
-# a confermare ulteriormente i dati che abbiamo ottenuto nella matrice riguardo la classe ATTENZIONE nel 
-# modello nuovo in XGBoost ottimizzato abbiamo notevoli miglioramenti di precision 
-# (precision 0.42 -> precision 0.58) e di recall (recall 0.33 -> recall 0.74). 
-# Rispetto al modello standard, il miglioramento è netto.
+# LOGISTIC REGRESSION:
+# Accuracy: 0.82
+# Recall anomalie: 0.50 (trova il 50% delle anomalie)
+# Gap train-test: 0.037
+
+# DECISION TREE:
+# Accuracy: 0.85
+# Recall anomalie: 0.43
+# Gap train-test: 0.043
  
-# c'è da fare una discriminante però avendo solo 387 righe totali e un test set di 78 campioni, 
-# i risultati vanno letti con cautela statistica. 
-# 1 predizione in più o in meno sulla classe ANOMALIA (12 campioni nel test) sposta 
-# il recall dell'8%. I risultati sono promettenti ma andrebbero confermati su più dati.
+# RANDOM FOREST:
+# Accuracy: 0.85
+# Recall anomalie: 0.29
+# Gap train-test: 0.14 
+
+# XGBOOST:
+# Accuracy: 0.88
+# Recall anomalie: 0.57
+# Gap train-test: 0.108
+
+# SVM:
+# Accuracy: 0.78
+# Recall anomalie: 0.36
+# Gap train-test: 0.104
+ 
+# RANDOM FOREST GRIDSEARCH:
+# Parametri principali:
+# profondità limitata (max_depth = 4)
+# maggiore numero di alberi (n_estimators = 400)
+# Recall anomalie: 0.36 peggioramento rispetto alla versione base.
+
+# XGBOOST GRIDSEARCH
+# Parametri principali:
+# profondità limitata (max_depth = 3)
+# maggiore numero di alberi (n_estimators = 200)
+# scale_pos_weight=9.39
+# Recall anomalie: 0.36 peggioramento rispetto alla versione base.
+ 
+# CONFRONTO FINALE TRA I MODELLI:
+
+#                     Model     Accuracy    F1-Anomalia     Recall-Anomalia
+#                   XGBoost     0.884615       0.640000            0.571429
+#       Logistic Regression     0.820513       0.500000            0.500000
+#             Decision Tree     0.846154       0.500000            0.428571
+# Random Forest Ottimizzata     0.846154       0.454545            0.357143
+#                       SVM     0.782051       0.370370            0.357143
+#       XGBoost Ottimizzata     0.858974       0.476190            0.357143
+#             Random Forest     0.846154       0.400000            0.285714
+#   Recall ANOMALIA: 0.5714
+# Modello migliore: XGBoost  (Recall: 0.5714, F1: 0.6400)
 
 # ===============================================================================================
 # ========================================= OUTPUT ==============================================

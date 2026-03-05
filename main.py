@@ -14,12 +14,17 @@
 # Used models:
 # 1. Regressione Indice_Inefficienza      ->  models/regression/best_regressione_inefficienza.pkl
 # 2. Regressione Tempo Lavoraz. ORE       ->  models/regression/best_regressione_time.pkl
-# 3. Classificazione standard             ->  models/classification/best_classificazione_standard.pkl
-# 4. Classificazione anomaly-oriented     ->  models/classification/best_classificazione_anomaly.pkl
-# 5. Classificazione anomaly-oriented-BD  ->  models/classification/best_classificazione_anomaly_BD.pkl
+# 3. Classificazione anomaly-oriented     ->  models/classification/best_classificazione_anomaly.pkl
+# 4. Classificazione anomaly-oriented-BD  ->  models/classification/best_classificazione_anomaly_BD.pkl
 
 # outputs structure:
 # same columns of the data imported plus the four colums of models ouputs
+
+# =============================== NOTE ===============================
+# the file main is currently running with the same data that models did train with
+# so obviously the results are extremely good, but they are false since 80% of the data 
+# was used for training, and 20% for testing, but the whole dataset is the same, 
+# so we are predicting on datas that the model already saw during training.
 
 import pandas as pd
 import numpy as np
@@ -48,10 +53,6 @@ PATHS = {
         "model": os.path.join(MODELS_DIR, "regression", "best_regressione_time.pkl"),
         "params": os.path.join(MODELS_DIR, "regression", "parametri_preprocessing_tempo.pkl"),
     },
-    "classificazione_standard": {
-        "model": os.path.join(MODELS_DIR, "classification", "best_classificazione_standard.pkl"),
-        "params": os.path.join(MODELS_DIR, "classification", "parametri_classificazione_standard.pkl"),
-    },
     "classificazione_anomaly": {
         "model": os.path.join(MODELS_DIR, "classification", "best_classificazione_anomaly.pkl"),
         "params": os.path.join(MODELS_DIR, "classification", "parametri_classificazione_anomaly.pkl"),
@@ -64,6 +65,7 @@ PATHS = {
 }
 
 LABELS = {0: "NORMALE", 1: "ATTENZIONE", 2: "ANOMALIA"}
+LABELS_BINARY = {0: "NORMALE", 1: "ANOMALIA"}
 
 # columns to drop
 COLS_TO_DROP = [
@@ -156,25 +158,11 @@ def predici_tempo(df_raw: pd.DataFrame) -> pd.Series:
     predizioni = model.predict(X)
     return pd.Series(predizioni, index=df.index, name="Tempo_Predetto_ORE")
 
-# classifies every machine processing with the standard model
-def predici_classe_standard(df_raw: pd.DataFrame) -> pd.Series:
-    model, params = carica_modello("classificazione_standard")
-
-    df = df_raw.copy()
-    df = applica_encoding_articolo(df, params)
-    df = pipeline_classificazione(df)
-    df = normalizza_categoriche_inferenza(df)
-    X  = prepara_X(df)
-
-    classi = model.predict(X)
-    return pd.Series([LABELS[c] for c in classi], index=df.index, name="Classe_Standard")
-
-# classifies every machine processing with the anomaly oriented model
+# classifies every machine processing with the anomaly oriented model (binary: NORMALE / ANOMALIA)
 def predici_classe_anomaly(df_raw: pd.DataFrame) -> pd.Series:
     model, params = carica_modello("classificazione_anomaly")
 
-    soglia_anomalia = params.get("soglia_proba_anomalia",   0.30)
-    soglia_attenzione = params.get("soglia_proba_attenzione", 0.35)
+    soglia_anomalia = params.get("soglia_proba_anomalia", 0.30)
 
     df = df_raw.copy()
     df = applica_encoding_articolo(df, params)
@@ -183,11 +171,22 @@ def predici_classe_anomaly(df_raw: pd.DataFrame) -> pd.Series:
     X  = prepara_X(df)
 
     proba = model.predict_proba(X)
-    classi = np.where(
-        proba[:, 2] >= soglia_anomalia, 2,
-        np.where(proba[:, 1] >= soglia_attenzione, 1, 0)
-    )
-    return pd.Series([LABELS[c] for c in classi], index=df.index, name="Classe_Anomaly_Oriented")
+    # Binary model: column 0 = NORMALE, column 1 = ANOMALIA
+    classi = np.where(proba[:, 1] >= soglia_anomalia, 1, 0)
+    return pd.Series([LABELS_BINARY[c] for c in classi], index=df.index, name="Classe_Anomaly_Oriented")
+
+# classifies every machine processing with the anomaly oriented Big-Data model (3-class)
+def predici_classe_anomaly_BD(df_raw: pd.DataFrame) -> pd.Series:
+    model, params = carica_modello("classificazione_anomaly_BD")
+
+    df = df_raw.copy()
+    df = applica_encoding_articolo(df, params)
+    df = pipeline_classificazione(df)
+    df = normalizza_categoriche_inferenza(df)
+    X  = prepara_X(df)
+
+    classi = model.predict(X)
+    return pd.Series([LABELS[c] for c in classi], index=df.index, name="Classe_Anomaly_Oriented_Big_Data")
 
 # Main function
 def main(path_input: str, path_output: str = None):
@@ -219,18 +218,18 @@ def main(path_input: str, path_output: str = None):
         pred_tempo = pd.Series([np.nan] * len(df), name="Tempo_Predetto_ORE")
 
     try:
-        pred_standard = predici_classe_standard(df)
-        print("  [OK] Classificazione standard")
-    except Exception as e:
-        print(f"  [ERRORE] Classificazione standard: {e}")
-        pred_standard = pd.Series(["ERRORE"] * len(df), name="Classe_Standard")
-
-    try:
         pred_anomaly = predici_classe_anomaly(df)
         print("  [OK] Classificazione anomaly-oriented")
     except Exception as e:
         print(f"  [ERRORE] Classificazione anomaly-oriented: {e}")
         pred_anomaly = pd.Series(["ERRORE"] * len(df), name="Classe_Anomaly_Oriented")
+
+    try:
+        pred_anomaly_BD = predici_classe_anomaly_BD(df)
+        print("  [OK] Classificazione anomaly-oriented Big Data")
+    except Exception as e:
+        print(f"  [ERRORE] Classificazione anomaly-oriented Big Data: {e}")
+        pred_anomaly_BD = pd.Series(["ERRORE"] * len(df), name="Classe_Anomaly_Oriented_Big_Data")
 
     # results table
     id_cols = ["WO", "FASE", "ARTICOLO", "Data_Ora_Fine", "Descrizione Macchina", 
@@ -240,8 +239,8 @@ def main(path_input: str, path_output: str = None):
     risultati = df[id_cols].copy()
     risultati = risultati.join(pred_inefficienza)
     risultati = risultati.join(pred_tempo)
-    risultati = risultati.join(pred_standard)
     risultati = risultati.join(pred_anomaly)
+    risultati = risultati.join(pred_anomaly_BD)
 
     print("\n" + "="*70)
     print("RISULTATI PREDIZIONI")
@@ -261,7 +260,7 @@ def main(path_input: str, path_output: str = None):
         print(f"{'Min:':<12} {pred_ineff_reset.min():<27.4f} Min:         {real_ineff.min():.4f}")
         print(f"{'Max:':<12} {pred_ineff_reset.max():<27.4f} Max:         {real_ineff.max():.4f}")
 
-    # Classification Indice_Inefficienza
+    # Classification summary tables
     def _stampa_tabella_classificazione(nome_col, serie_pred, df_raw, nome_modello):
         if "ERRORE" in serie_pred.astype(str).values:
             return
@@ -272,13 +271,17 @@ def main(path_input: str, path_output: str = None):
         try:
             params_cls = PATHS[nome_modello]["params"]
             params = joblib.load(params_cls)
-            soglia_attenzione = params["soglia_attenzione"]
             soglia_anomalia = params["soglia_anomalia"]
+            soglia_attenzione = params.get("soglia_attenzione", None)
         except Exception as e:
             print(f"\n{nome_col}: impossibile caricare soglie ({e})")
             return
 
-        label_order = ["NORMALE", "ATTENZIONE", "ANOMALIA"]
+        if soglia_attenzione is not None:
+            label_order = ["NORMALE", "ATTENZIONE", "ANOMALIA"]
+        else:
+            label_order = ["NORMALE", "ANOMALIA"]
+
         pred_cls = serie_pred.dropna().astype(str)
         valid_idx = pred_cls[pred_cls.isin(label_order)].index
         if len(valid_idx) == 0:
@@ -286,10 +289,16 @@ def main(path_input: str, path_output: str = None):
             return
 
         ineff = df_raw.loc[valid_idx, "Indice_Inefficienza"]
-        real_cls = pd.Series(np.where(
-            ineff <= soglia_attenzione, "NORMALE",
-            np.where(ineff <= soglia_anomalia, "ATTENZIONE", "ANOMALIA")
-        ), index=valid_idx)
+        if soglia_attenzione is not None:
+            real_cls = pd.Series(np.where(
+                ineff <= soglia_attenzione, "NORMALE",
+                np.where(ineff <= soglia_anomalia, "ATTENZIONE", "ANOMALIA")
+            ), index=valid_idx)
+        else:
+            real_cls = pd.Series(
+                np.where(ineff <= soglia_anomalia, "NORMALE", "ANOMALIA"),
+                index=valid_idx
+            )
         pred_cls = pred_cls.loc[valid_idx]
 
         print(f"\n{nome_col}:")
@@ -312,8 +321,8 @@ def main(path_input: str, path_output: str = None):
         print("-" * (len(header) - 2))
         print(f"{'TOTALE':<14} {tot_reale:>7} {tot_pred:>9} {tot_corretti:>9} {acc_tot:>11.1f}%")
 
-    _stampa_tabella_classificazione("Classe_Standard", pred_standard, df, "classificazione_standard")
     _stampa_tabella_classificazione("Classe_Anomaly_Oriented", pred_anomaly, df, "classificazione_anomaly")
+    _stampa_tabella_classificazione("Classe_Anomaly_Oriented_Big_Data", pred_anomaly_BD, df, "classificazione_anomaly_BD")
 
     # Time regression
     if pred_tempo.dtype != object and "Tempo Lavoraz. ORE" in df.columns and "Tempo_Teorico_TOT_ORE" in df.columns:
@@ -350,8 +359,8 @@ def main(path_input: str, path_output: str = None):
         print(f"\nTempo_Predetto_ORE:")
         print(f"  Media: {pred_tempo.mean():.4f} ore  |  Min: {pred_tempo.min():.4f}  |  Max: {pred_tempo.max():.4f}")
     for nome_col, serie in [
-        ("Classe_Standard", pred_standard),
         ("Classe_Anomaly_Oriented", pred_anomaly),
+        ("Classe_Anomaly_Oriented_Big_Data", pred_anomaly_BD),
     ]:
         serie_valida = serie.dropna().astype(str)
         if serie.dtype == object and len(serie_valida) > 0 and "ERRORE" not in serie_valida.values:
