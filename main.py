@@ -16,6 +16,8 @@
 # 2. Regressione Tempo Lavoraz. ORE       ->  models/regression/best_regressione_time.pkl
 # 3. Classificazione anomaly-oriented     ->  models/classification/best_classificazione_anomaly.pkl
 # 4. Classificazione anomaly-oriented-BD  ->  models/classification/best_classificazione_anomaly_BD.pkl
+# 5. Classificazione soglie custom        ->  models/classification/best_classificazione_soglie_custom.pkl
+# 6. Regressione OEE                      ->  models/regression/best_regressione_oee.pkl
 
 # outputs structure:
 # same columns of the data imported plus the four colums of models ouputs
@@ -39,6 +41,7 @@ warnings.filterwarnings("ignore")
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from feature_engineering import pipeline_inefficienza, pipeline_tempo, pipeline_classificazione
+from OEE.OEE_feature_engineering import aggiungi_feature_oee
 
 # models path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -57,11 +60,18 @@ PATHS = {
         "model": os.path.join(MODELS_DIR, "classification", "best_classificazione_anomaly.pkl"),
         "params": os.path.join(MODELS_DIR, "classification", "parametri_classificazione_anomaly.pkl"),
     },
+    "classificazione_soglie_custom": {
+        "model": os.path.join(MODELS_DIR, "classification", "best_classificazione_soglie_custom.pkl"),
+        "params": os.path.join(MODELS_DIR, "classification", "parametri_classificazione_soglie_custom.pkl"),
+    },
     "classificazione_anomaly_BD": {
         "model": os.path.join(MODELS_DIR, "classification", "best_classificazione_anomaly_BD.pkl"),
         "params": os.path.join(MODELS_DIR, "classification", "parametri_classificazione_anomaly_BD.pkl"),
     },
-
+    "regressione_oee": {
+        "model": os.path.join(MODELS_DIR, "regression", "best_regressione_oee.pkl"),
+        "params": os.path.join(MODELS_DIR, "regression", "parametri_regressione_oee.pkl"),
+    },
 }
 
 LABELS = {0: "NORMALE", 1: "ATTENZIONE", 2: "ANOMALIA"}
@@ -115,6 +125,25 @@ def applica_encoding_articolo(df: pd.DataFrame, params: dict) -> pd.DataFrame:
 # removes columns
 def prepara_X(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=COLS_TO_DROP, errors="ignore")
+
+
+def predici_oee(df_raw: pd.DataFrame) -> pd.Series:
+    # predicts OEE before the WO is executed
+    # lag/rolling OEE features will be NaN for new data (imputer fills with median)
+    model, params = carica_modello("regressione_oee")
+
+    df = df_raw.copy()
+    df = applica_encoding_articolo(df, params)
+    df = aggiungi_feature_oee(df)  # storico=None: no historical OEE available at inference
+
+    feature_cols = [c for c in params["feature_cols"] if c in df.columns]
+    cat_cols = [c for c in feature_cols if not pd.api.types.is_numeric_dtype(df[c])]
+    for c in cat_cols:
+        df[c] = df[c].fillna("MISSING").astype(str)
+
+    X = df[feature_cols]
+    pred = model.predict(X)
+    return pd.Series(pred, index=df.index, name="OEE_Predetto").clip(0, 1)
 
 
 def normalizza_categoriche_inferenza(df: pd.DataFrame) -> pd.DataFrame:
@@ -188,6 +217,23 @@ def predici_classe_anomaly_BD(df_raw: pd.DataFrame) -> pd.Series:
     classi = model.predict(X)
     return pd.Series([LABELS[c] for c in classi], index=df.index, name="Classe_Anomaly_Oriented_Big_Data")
 
+# classifies every machine processing with soglie custom model (binary: NORMALE / ANOMALIA)
+def predici_classe_soglie_custom(df_raw: pd.DataFrame) -> pd.Series:
+    model, params = carica_modello("classificazione_soglie_custom")
+
+    soglia_anomalia = params.get("soglia_proba_anomalia", 0.30)
+
+    df = df_raw.copy()
+    df = applica_encoding_articolo(df, params)
+    df = pipeline_classificazione(df)
+    df = normalizza_categoriche_inferenza(df)
+    X  = prepara_X(df)
+
+    proba = model.predict_proba(X)
+    # Binary model: column 0 = NORMALE, column 1 = ANOMALIA
+    classi = np.where(proba[:, 1] >= soglia_anomalia, 1, 0)
+    return pd.Series([LABELS_BINARY[c] for c in classi], index=df.index, name="Classe_Soglie_Custom")
+
 # Main function
 def main(path_input: str, path_output: str = None):
 
@@ -231,8 +277,22 @@ def main(path_input: str, path_output: str = None):
         print(f"  [ERRORE] Classificazione anomaly-oriented Big Data: {e}")
         pred_anomaly_BD = pd.Series(["ERRORE"] * len(df), name="Classe_Anomaly_Oriented_Big_Data")
 
+    try:
+        pred_soglie_custom = predici_classe_soglie_custom(df)
+        print("  [OK] Classificazione soglie custom")
+    except Exception as e:
+        print(f"  [ERRORE] Classificazione soglie custom: {e}")
+        pred_soglie_custom = pd.Series(["ERRORE"] * len(df), name="Classe_Soglie_Custom")
+
+    try:
+        pred_oee = predici_oee(df)
+        print("  [OK] Regressione OEE")
+    except Exception as e:
+        print(f"  [ERRORE] Regressione OEE: {e}")
+        pred_oee = pd.Series([np.nan] * len(df), name="OEE_Predetto")
+
     # results table
-    id_cols = ["WO", "FASE", "ARTICOLO", "Data_Ora_Fine", "Descrizione Macchina", 
+    id_cols = ["WO", "FASE", "ARTICOLO", "Data_Ora_Fine", "Descrizione Macchina",
                "Tempo_Teorico_TOT_ORE", "Tempo Lavoraz. ORE", "Indice_Inefficienza"]
     id_cols = [c for c in id_cols if c in df.columns]
 
@@ -241,6 +301,8 @@ def main(path_input: str, path_output: str = None):
     risultati = risultati.join(pred_tempo)
     risultati = risultati.join(pred_anomaly)
     risultati = risultati.join(pred_anomaly_BD)
+    risultati = risultati.join(pred_soglie_custom)
+    risultati = risultati.join(pred_oee)
 
     print("\n" + "="*70)
     print("RISULTATI PREDIZIONI")
@@ -323,6 +385,7 @@ def main(path_input: str, path_output: str = None):
 
     _stampa_tabella_classificazione("Classe_Anomaly_Oriented", pred_anomaly, df, "classificazione_anomaly")
     _stampa_tabella_classificazione("Classe_Anomaly_Oriented_Big_Data", pred_anomaly_BD, df, "classificazione_anomaly_BD")
+    _stampa_tabella_classificazione("Classe_Soglie_Custom", pred_soglie_custom, df, "classificazione_soglie_custom")
 
     # Time regression
     if pred_tempo.dtype != object and "Tempo Lavoraz. ORE" in df.columns and "Tempo_Teorico_TOT_ORE" in df.columns:
@@ -361,6 +424,7 @@ def main(path_input: str, path_output: str = None):
     for nome_col, serie in [
         ("Classe_Anomaly_Oriented", pred_anomaly),
         ("Classe_Anomaly_Oriented_Big_Data", pred_anomaly_BD),
+        ("Classe_Soglie_Custom", pred_soglie_custom),
     ]:
         serie_valida = serie.dropna().astype(str)
         if serie.dtype == object and len(serie_valida) > 0 and "ERRORE" not in serie_valida.values:
@@ -370,6 +434,19 @@ def main(path_input: str, path_output: str = None):
                 cnt = dist.get(label, 0)
                 pct = cnt / len(serie_valida) * 100
                 print(f"  {label:<12}: {cnt:>4}  ({pct:.1f}%)")
+
+    # OEE prediction summary
+    if pred_oee.dtype != object:
+        pred_oee_valid = pred_oee.dropna()
+        if len(pred_oee_valid) > 0:
+            n_alert = (pred_oee_valid < 0.65).sum()
+            n_accettabile = ((pred_oee_valid >= 0.65) & (pred_oee_valid < 0.85)).sum()
+            n_ottimo = (pred_oee_valid >= 0.85).sum()
+            print(f"\nOEE_Predetto:")
+            print(f"  Media: {pred_oee_valid.mean():.4f}  |  Min: {pred_oee_valid.min():.4f}  |  Max: {pred_oee_valid.max():.4f}")
+            print(f"  Critico     (< 0.65) : {n_alert:>4}  ({n_alert/len(pred_oee_valid):.0%})")
+            print(f"  Accettabile (0.65-0.85): {n_accettabile:>4}  ({n_accettabile/len(pred_oee_valid):.0%})")
+            print(f"  Ottimo (>= 0.85): {n_ottimo:>4}  ({n_ottimo/len(pred_oee_valid):.0%})")
 
     if path_output is None:
         output_dir = os.path.join(BASE_DIR, "..", "outputs")

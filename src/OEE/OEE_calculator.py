@@ -90,7 +90,7 @@ def calcola_oee(df: pd.DataFrame) -> pd.DataFrame:
     out["OEE_Classe"] = pd.cut(
         out["OEE"],
         bins=[-np.inf, SOGLIA_ACCETTABILE, SOGLIA_OTTIMO, np.inf],
-        labels=["Critico", "Accettabile", "World Class"]
+        labels=["Critico", "Accettabile", "Ottimo"]
     )
 
     return out

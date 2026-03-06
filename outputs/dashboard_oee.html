@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OEE Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;600;700&display=swap');
+
+  :root {
+    --bg:       #0d0f14;
+    --surface:  #141720;
+    --border:   #1e2130;
+    --accent:   #00e5a0;
+    --warn:     #f5a623;
+    --danger:   #e5004c;
+    --text:     #e8eaf0;
+    --muted:    #5a6070;
+    --radius:   12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  header {
+    padding: 28px 40px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+  header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  header span {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .grid {
+    display: grid;
+    gap: 16px;
+    padding: 24px 40px;
+  }
+
+  .kpi-row { grid-template-columns: repeat(4, 1fr); }
+  .charts-row { grid-template-columns: 2fr 1fr; }
+  .bottom-row { grid-template-columns: 1fr 1fr; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+  }
+
+  .kpi-card {
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+  .kpi-card.warn::before  { background: var(--warn); }
+  .kpi-card.danger::before { background: var(--danger); }
+
+  .kpi-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .kpi-value {
+    font-family: 'DM Mono', monospace;
+    font-size: 36px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--accent);
+  }
+  .kpi-card.warn  .kpi-value  { color: var(--warn); }
+  .kpi-card.danger .kpi-value { color: var(--danger); }
+  .kpi-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  .card-title {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  canvas { width: 100% !important; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  th {
+    text-align: left;
+    padding: 6px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .badge-critico   { background: rgba(229,0,76,0.15);  color: var(--danger); }
+  .badge-accettabile{ background: rgba(245,166,35,0.15); color: var(--warn); }
+  .badge-wc        { background: rgba(0,229,160,0.15);  color: var(--accent); }
+
+  .oee-bar {
+    display: inline-block;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--danger);
+    vertical-align: middle;
+    margin-right: 6px;
+    transition: width 0.3s;
+  }
+  .oee-bar.ok { background: var(--accent); }
+  .oee-bar.mid { background: var(--warn); }
+
+  footer {
+    padding: 16px 40px;
+    color: var(--muted);
+    font-size: 11px;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OEE Dashboard</h1>
+  <span>Generato il 06/03/2026 16:40 &nbsp;·&nbsp; 390 WO analizzati</span>
+</header>
+
+<!-- KPI -->
+<div class="grid kpi-row">
+  <div class="card kpi-card">
+    <div class="kpi-label">OEE Medio</div>
+    <div class="kpi-value">77.6%</div>
+    <div class="kpi-sub">Disponibilità × Performance × Qualità</div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Disponibilità</div>
+    <div class="kpi-value">88.2%</div>
+    <div class="kpi-sub">Uptime effettivo / programmato</div>
+  </div>
+  <div class="card kpi-card warn">
+    <div class="kpi-label">Performance</div>
+    <div class="kpi-value">86.5%</div>
+    <div class="kpi-sub">Velocità reale / velocità teorica</div>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Qualità</div>
+    <div class="kpi-value">99.5%</div>
+    <div class="kpi-sub">Pezzi buoni / tot pezzi</div>
+  </div>
+</div>
+
+<!-- TREND + DISTRIBUZIONE -->
+<div class="grid charts-row">
+  <div class="card">
+    <div class="card-title">Trend OEE — dettaglio mensile</div>
+    <div id="trendContainer" style="display:flex;flex-direction:column;gap:20px;max-height:330px;overflow-y:auto;padding-right:6px;scrollbar-width:thin;scrollbar-color:#1e2130 transparent;"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Distribuzione classi OEE</div>
+    <canvas id="distChart" height="110"></canvas>
+  </div>
+</div>
+
+<!-- ARTICOLI + ALERT TABLE -->
+<div class="grid bottom-row">
+  <div class="card">
+    <div class="card-title">Articoli con OEE più basso</div>
+    <canvas id="artChart" height="180"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-title">WO critici — OEE sotto soglia</div>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>WO</th><th>Fase</th><th>OEE</th><th>D</th><th>P</th><th>Q</th><th>Classe</th><th>Alert</th>
+          </tr>
+        </thead>
+        <tbody id="alertTable"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ALERT SUMMARY -->
+<div class="grid" style="grid-template-columns:1fr;">
+  <div class="card" style="background:#0d0f14;border-color:#1e2130;">
+    <div class="card-title" style="color:#e5004c;">⚠ Alert automatici</div>
+    <div id="alertSummary" style="font-size:12px;line-height:1.8;color:#c0c4cc;"></div>
+  </div>
+</div>
+
+<footer>OEE = Disponibilità × Performance × Qualità &nbsp;|&nbsp; Ottimo ≥ 85% &nbsp;|&nbsp; Accettabile ≥ 65% &nbsp;|&nbsp; Critico &lt; 65%</footer>
+
+<script>
+const TREND = {"labels": ["2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"], "oee": [0.6904, 0.7461, 0.7385, 0.8413, 0.84, 0.8358, 0.767, 0.6864, 0.7557, 0.7941, 0.7322, 0.7581, 0.7687, 0.82], "disp": [0.8275, 0.8689, 0.8728, 0.9244, 0.9202, 0.9183, 0.8896, 0.8438, 0.8677, 0.876, 0.8516, 0.8576, 0.87, 0.8982], "perf": [0.8024, 0.8435, 0.8302, 0.905, 0.9044, 0.902, 0.8469, 0.7992, 0.8558, 0.8827, 0.8473, 0.8613, 0.8679, 0.9041], "qual": [0.9998, 0.9923, 0.9829, 0.9909, 0.9962, 0.9983, 0.9981, 0.9917, 0.9973, 0.9992, 0.9942, 0.9971, 0.99, 0.9961]};
+const DIST  = {"labels": ["Ottimo", "Accettabile", "Critico"], "values": [185, 109, 96]};
+const ARTS  = {"labels": [1202604281.0, 1205460261.0, 1089920151.0, 1089930891.0, 1089930841.0, 1089980611.0, 1089952491.0, 1089995351.0, 1204480121.0, 1089956421.0, 1204000181.0, 1200100161.0, 1200300101.0, 1205042111.0, 1200100131.0], "values": [0.2206, 0.2311, 0.262, 0.2793, 0.2882, 0.2944, 0.3059, 0.3165, 0.3227, 0.3272, 0.3337, 0.3714, 0.379, 0.3794, 0.394]};
+const CRITICI = [{"WO": 24016934, "FASE": 28044, "ARTICOLO": 1202604281.0, "Data_Ora_Fine": "2025-05-12 20:45:12", "OEE": 0.2206, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.4672, "OEE_Performance": 0.5218, "OEE_Qualita": 0.9048, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA QUALITA_BASSA"}, {"WO": 24028369, "FASE": 22044, "ARTICOLO": 1200100131.0, "Data_Ora_Fine": "2025-01-27 19:19:37", "OEE": 0.2233, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.4855, "OEE_Performance": 0.46, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 25006077, "FASE": 24044, "ARTICOLO": 1205460261.0, "Data_Ora_Fine": "2025-04-10 08:52:46", "OEE": 0.2311, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.5187, "OEE_Performance": 0.4455, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 24026956, "FASE": 22044, "ARTICOLO": 1089930891.0, "Data_Ora_Fine": "2025-02-20 11:24:19", "OEE": 0.244, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.4689, "OEE_Performance": 0.5204, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 25018200, "FASE": 24044, "ARTICOLO": 1207300111.0, "Data_Ora_Fine": "2025-12-16 15:30:59", "OEE": 0.2472, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.5443, "OEE_Performance": 0.4542, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 24029231, "FASE": 22044, "ARTICOLO": 1204600161.0, "Data_Ora_Fine": "2025-03-27 21:46:46", "OEE": 0.2505, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.6654, "OEE_Performance": 0.5758, "OEE_Qualita": 0.6538, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA QUALITA_BASSA"}, {"WO": 25029089, "FASE": 14019, "ARTICOLO": 1083003421.0, "Data_Ora_Fine": "2026-01-27 22:01:56", "OEE": 0.2529, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.5342, "OEE_Performance": 0.4734, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 25014329, "FASE": 16017, "ARTICOLO": 1089920151.0, "Data_Ora_Fine": "2025-07-24 00:07:10", "OEE": 0.262, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.5227, "OEE_Performance": 0.5011, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 25019656, "FASE": 26044, "ARTICOLO": 1205042111.0, "Data_Ora_Fine": "2025-11-17 08:41:50", "OEE": 0.2674, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.5326, "OEE_Performance": 0.5021, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}, {"WO": 25013236, "FASE": 22044, "ARTICOLO": 1204600161.0, "Data_Ora_Fine": "2025-10-27 22:59:34", "OEE": 0.2736, "OEE_Classe": "Critico", "OEE_Disponibilita": 0.5322, "OEE_Performance": 0.5141, "OEE_Qualita": 1.0, "Alert_Motivo": "OEE_CRITICO PERFORMANCE_BASSA DISPONIBILITA_BASSA"}];
+const KPI  = {"oee_medio": 77.6, "disp_media": 88.2, "perf_media": 86.5, "qual_media": 99.5, "n_critici": 96, "n_wc": 185, "totale_wo": 390, "generato_il": "06/03/2026 16:40"};
+
+// ── Trend Charts (mensile) ─────────────────────────────────────────────────
+if (TREND.labels && TREND.labels.length) {
+  const trendContainer = document.getElementById('trendContainer');
+  for (let i = 0; i < TREND.labels.length; i++) {
+    const mese = TREND.labels[i];
+    const wrapper = document.createElement('div');
+    const periodLabel = document.createElement('div');
+    periodLabel.style.cssText = 'font-size:10px;color:#5a6070;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px;';
+    periodLabel.textContent = mese;
+    const canvas = document.createElement('canvas');
+    canvas.height = 280;
+    wrapper.appendChild(periodLabel);
+    wrapper.appendChild(canvas);
+    trendContainer.appendChild(wrapper);
+    const vals = [TREND.oee[i], TREND.disp[i], TREND.perf[i], TREND.qual[i]].filter(v => v != null);
+    const yMin = Math.max(0, Math.floor(Math.min(...vals) * 20) / 20 - 0.03);
+    const yMax = Math.min(1, Math.ceil(Math.max(...vals) * 20) / 20 + 0.02);
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: ['OEE', 'Disponibilità', 'Performance', 'Qualità'],
+        datasets: [{
+          data: [TREND.oee[i], TREND.disp[i], TREND.perf[i], TREND.qual[i]],
+          backgroundColor: ['rgba(0,229,160,0.7)', 'rgba(91,138,245,0.7)', 'rgba(245,166,35,0.7)', 'rgba(199,125,255,0.7)'],
+          borderColor:     ['#00e5a0', '#5b8af5', '#f5a623', '#c77dff'],
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks:{ color:'#8890a4', font:{size:11} }, grid:{ display:false } },
+          y: { min: yMin, max: yMax, ticks:{ color:'#5a6070', font:{size:10}, callback: v => (v*100).toFixed(0)+'%' }, grid:{ color:'#1e2130' } }
+        }
+      }
+    });
+  }
+}
+
+// ── Distribuzione Classi ───────────────────────────────────────────────────
+// label order from Python is always: Ottimo, Accettabile, Critico
+if (DIST.labels && DIST.labels.length) {
+  new Chart(document.getElementById('distChart'), {
+    type: 'doughnut',
+    data: {
+      labels: DIST.labels,
+      datasets: [{ data: DIST.values, backgroundColor: ['#00e5a0','#f5a623','#e5004c'], borderWidth: 0 }]
+    },
+    options: {
+      plugins: {
+        legend: { position:'bottom', labels:{ color:'#8890a4', font:{size:11}, padding:16 } }
+      },
+      cutout: '65%'
+    }
+  });
+}
+
+// ── Articoli chart ─────────────────────────────────────────────────────────
+if (ARTS.labels && ARTS.labels.length) {
+  const colors = ARTS.values.map(v => v < 0.65 ? '#e5004c' : v < 0.85 ? '#f5a623' : '#00e5a0');
+  new Chart(document.getElementById('artChart'), {
+    type: 'bar',
+    data: {
+      labels: ARTS.labels,
+      datasets: [{ label: 'OEE medio', data: ARTS.values, backgroundColor: colors, borderRadius: 4, borderSkipped: false }]
+    },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend:{ display:false } },
+      scales: {
+        x: { min:0, max:1, ticks:{ color:'#5a6070', font:{size:10}, callback: v => (v*100)+'%' }, grid:{ color:'#1e2130' } },
+        y: { ticks:{ color:'#8890a4', font:{size:10} }, grid:{ display:false } }
+      }
+    }
+  });
+}
+
+// ── Tabella WO critici ─────────────────────────────────────────────────────
+const tbody = document.getElementById('alertTable');
+CRITICI.forEach(r => {
+  const oee = r.OEE ?? '-';
+  const pct = v => typeof v === 'number' ? (v*100).toFixed(1)+'%' : '-';
+  const classe = (r.OEE_Classe||'').toLowerCase();
+  const badge = (classe === 'ottimo' || classe.includes('world')) ? 'badge-wc' : classe === 'accettabile' ? 'badge-accettabile' : 'badge-critico';
+  const barW = typeof oee === 'number' ? Math.round(oee*60) : 0;
+  const barClass = oee >= 0.85 ? 'ok' : oee >= 0.65 ? 'mid' : '';
+  tbody.innerHTML += `<tr>
+    <td>${r.WO||'-'}</td>
+    <td>${r.FASE||'-'}</td>
+    <td><span class="oee-bar ${barClass}" style="width:${barW}px"></span>${pct(oee)}</td>
+    <td>${pct(r.OEE_Disponibilita)}</td>
+    <td>${pct(r.OEE_Performance)}</td>
+    <td>${pct(r.OEE_Qualita)}</td>
+    <td><span class="badge ${badge}">${r.OEE_Classe||'-'}</span></td>
+    <td style="color:#8890a4;font-size:10px">${r.Alert_Motivo||'-'}</td>
+  </tr>`;
+});
+
+// ── Alert summary ──────────────────────────────────────────────────────────
+const alertDiv = document.getElementById('alertSummary');
+const msgs = [];
+if (KPI.n_critici > 0)
+  msgs.push(`<b style="color:#e5004c">${KPI.n_critici} WO con OEE critico</b> (sotto il 65%) richiedono attenzione immediata.`);
+if (KPI.perf_media < 70)
+  msgs.push(`Performance media al <b>${KPI.perf_media}%</b> — verificare tempi teorici AS400 o cause di rallentamento.`);
+if (KPI.disp_media < 80)
+  msgs.push(`Disponibilità media al <b>${KPI.disp_media}%</b> — analizzare le cause dei fermi macchina.`);
+if (KPI.qual_media < 95)
+  msgs.push(`Qualità media al <b>${KPI.qual_media}%</b> — revisione scarti e rilavorazioni consigliata.`);
+if (msgs.length === 0)
+  msgs.push('Nessun alert critico. OEE globale nei parametri accettabili.');
+alertDiv.innerHTML = msgs.map(m => '→ ' + m).join('<br>');
+</script>
+</body>
+</html>

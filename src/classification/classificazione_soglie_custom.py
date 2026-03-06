@@ -277,7 +277,6 @@ def valuta_generalizzazione(name, y_train_true, y_train_pred, y_test_true, y_tes
 def predici_con_soglie(proba, soglia_anomalia):
     return (proba[:, 1] >= soglia_anomalia).astype(int)
 
-
 # CUSTOM THRESHOLDS 
 # finds the threshold that maximizes recall of anomalies while keeping precision above a certain floor
 # generate a set of thresholds (0.05, 0.91, 0.01) for each one it calculates: 
@@ -365,11 +364,11 @@ rf_param_grid = {
     "model__min_samples_leaf": [5, 10],
     "model__max_features": ["sqrt", 0.7]
 }
+
 # a causa dei pochi dati nelle grid al posto di TimeSeriesSplit(5) che crea fold iniziali 
 # con pochissime anomalie spesso 0 o 1. Il recall su quei fold è praticamente casuale, 
 # quindi la GridSearch sceglie iperparametri sbagliati. 
 # StratifiedKFold funziona meglio perché garantisce anomalie in ogni fold.
-
 rf_grid = GridSearchCV(
     rf_pipeline,
     rf_param_grid,
@@ -504,7 +503,6 @@ else:
     cv_esterna = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     cv_descrizione = "StratifiedKFold 5-fold"
 
-
 def cv_con_soglia_custom(model, X, y, cv, soglia):
     metriche = {"accuracy": [], "recall": [], "f1": [], "roc_auc": []}
     
@@ -528,7 +526,6 @@ def cv_con_soglia_custom(model, X, y, cv, soglia):
             pass
     
     return {k: np.array(v) for k, v in metriche.items()}
-
 
 soglia_best = soglie_modello.get(best_model_name, {}).get("soglia_anomalia", 0.5)
 
@@ -572,13 +569,6 @@ joblib.dump(parametri_anomaly, PARAMS_PATH)
 
 print(f"Modello salvato in {MODEL_PATH}")
 print(f"Parametri salvati in {PARAMS_PATH}")
-
-
-
-
-
-
-
 
 # ===============================================================================================
 # ========================================= OUTPUT ==============================================
