@@ -325,7 +325,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
   <div class="card">
     <div class="card-title">WO critici — OEE sotto soglia</div>
-    <div style="overflow-x:auto;">
+    <div style="overflow-x:auto;max-height:168px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#1e2130 transparent;">
       <table>
         <thead>
           <tr>
