@@ -22,9 +22,9 @@ warnings.filterwarnings("ignore")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 DATA_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "koepfer_160_2.csv")
-OUTPUT_CM_PATH = os.path.join(PROJECT_ROOT, "outputs", "confusion_matrix_anomaly.png")
-MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "classification", "best_classificazione_anomaly.pkl")
-PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "classification", "parametri_classificazione_anomaly.pkl")
+OUTPUT_CM_PATH = os.path.join(PROJECT_ROOT, "outputs", "confusion_matrix_soglie_custom.png")
+MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "classification", "best_classificazione_soglie_custom.pkl")
+PARAMS_PATH = os.path.join(PROJECT_ROOT, "models", "classification", "parametri_classificazione_soglie_custom.pkl")
 
 # load datas
 df = pd.read_csv(DATA_PATH)
@@ -132,7 +132,7 @@ else:
 # n_neg → numero di campioni classe 0 (normale)
 # n_pos → numero di campioni classe 1 (anomalia)
 # scale_pos_weight ≈ normali / anomalie ≈ n%
-# dice a xgboost: sbagliare un’anomalia è circa n volte più grave che sbagliare un normale.
+# dice a xgboost: sbagliare un'anomalia è circa n volte più grave che sbagliare un normale.
 # spw calcolato su y_fit: coerente con la grid search che gira su X_fit.
 # Con split temporale y_fit (dati piu vecchi) puo avere meno anomalie
 # di y_train, dando uno spw piu alto che aiuta XGBoost sui dati recenti.
@@ -277,13 +277,13 @@ def valuta_generalizzazione(name, y_train_true, y_train_pred, y_test_true, y_tes
 def predici_con_soglie(proba, soglia_anomalia):
     return (proba[:, 1] >= soglia_anomalia).astype(int)
 
-"""
-CUSTOM THRESHOLDS 
-finds the threshold that maximizes recall of anomalies while keeping precision above a certain floor
-generate a set of thresholds (0.05, 0.91, 0.01) for each one it calculates: 
-Recall, Precision, F1, Falsi negativi
-If the threshold with the best results is less than min_precision = 0.25, use that threshold.
-Otherwise, remove the constraint and maximize recall only.
+
+# CUSTOM THRESHOLDS 
+# finds the threshold that maximizes recall of anomalies while keeping precision above a certain floor
+# generate a set of thresholds (0.05, 0.91, 0.01) for each one it calculates: 
+# Recall, Precision, F1, Falsi negativi
+# If the threshold with the best results is less than min_precision = 0.25, use that threshold.
+# Otherwise, remove the constraint and maximize recall only.
 
 def ottimizza_soglie(proba_val, y_val):
     return ottimizza_soglie_con_floor(proba_val, y_val, min_precision=0.25)
@@ -327,13 +327,13 @@ def ottimizza_soglie_con_floor(proba_val, y_val, min_precision=0.25):
         return ottimizza_soglie_con_floor(proba_val, y_val, min_precision=0.0)
 
     return migliori_soglie
-"""
+
 
 # training and comparison of base models
 results = []
 trained_models = {}
 predizioni_test = {}
-# soglie_modello = {}
+soglie_modello = {}
 print("\nBASE MODELS:")
 for name, model in base_models.items():
     model.fit(X_train, y_train)
@@ -383,46 +383,35 @@ rf_grid.fit(X_fit, y_fit)
 print("Migliori parametri RF:", rf_grid.best_params_)
 
 best_rf_val = rf_grid.best_estimator_
-# SOGLIE CUSTOM (commentate - soglia standard 0.5 usata):
-# proba_val = best_rf_val.predict_proba(X_val)
-# rf_soglie = ottimizza_soglie(proba_val, y_val)
-# print(
-#     f"Soglie RF ottimizzate su validation -> anomalia: {rf_soglie['soglia_anomalia']:.2f}, "
-#     f"recall_anomalia: {rf_soglie['recall_anomalia_val']:.4f}, "
-#     f"precision_anomalia: {rf_soglie['precision_anomalia_val']:.4f}, "
-#     f"FN anomalia: {rf_soglie['fn_anomalia_val']}"
-# )
+proba_val = best_rf_val.predict_proba(X_val)
+rf_soglie = ottimizza_soglie(proba_val, y_val)
+print(
+    f"Soglie RF ottimizzate su validation -> anomalia: {rf_soglie['soglia_anomalia']:.2f}, "
+    f"recall_anomalia: {rf_soglie['recall_anomalia_val']:.4f}, "
+    f"precision_anomalia: {rf_soglie['precision_anomalia_val']:.4f}, "
+    f"FN anomalia: {rf_soglie['fn_anomalia_val']}"
+)
 
 best_rf = clone(rf_pipeline).set_params(**rf_grid.best_params_)
 best_rf.fit(X_train, y_train)
 
-# SOGLIA STANDARD 0.5: usa predict() direttamente
-# soglia_anomalia = rf_soglie["soglia_anomalia"]
-# proba_train = best_rf.predict_proba(X_train)
-# y_pred_train_custom = predici_con_soglie(proba_train, soglia_anomalia)
-# proba = best_rf.predict_proba(X_test)
-# y_pred_custom = predici_con_soglie(proba, soglia_anomalia)
-# valuta_modello("Random Forest Ottimizzata (soglie custom)", y_test, y_pred_custom, proba)
-# valuta_generalizzazione("Random Forest Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test, y_pred_custom)
+soglia_anomalia_rf = rf_soglie["soglia_anomalia"]
 proba_train_rf = best_rf.predict_proba(X_train)
-y_pred_train_rf = best_rf.predict(X_train)
+y_pred_train_rf = predici_con_soglie(proba_train_rf, soglia_anomalia_rf)
 proba_rf = best_rf.predict_proba(X_test)
-y_pred_rf = best_rf.predict(X_test)
-valuta_modello("Random Forest Ottimizzata (soglia 0.5)", y_test, y_pred_rf, proba_rf)
-valuta_generalizzazione("Random Forest Ottimizzata (soglia 0.5)", y_train, y_pred_train_rf, y_test, y_pred_rf)
+y_pred_rf = predici_con_soglie(proba_rf, soglia_anomalia_rf)
+valuta_modello("Random Forest Ottimizzata (soglie custom)", y_test, y_pred_rf, proba_rf)
+valuta_generalizzazione("Random Forest Ottimizzata (soglie custom)", y_train, y_pred_train_rf, y_test, y_pred_rf)
+
 results.append({
     "Model": "Random Forest Ottimizzata",
-    # "Accuracy": accuracy_score(y_test, y_pred_custom),
-    # "F1-macro": f1_score(y_test, y_pred_custom, average="macro", zero_division=0)
     "Accuracy": accuracy_score(y_test, y_pred_rf),
     "F1-Anomalia": f1_score(y_test, y_pred_rf, pos_label=1, zero_division=0),
     "Recall-Anomalia": recall_score(y_test, y_pred_rf, pos_label=1, zero_division=0)
 })
 trained_models["Random Forest Ottimizzata"] = best_rf
-# predizioni_test["Random Forest Ottimizzata"] = y_pred_custom
-# soglie_modello["Random Forest Ottimizzata"] = rf_soglie
 predizioni_test["Random Forest Ottimizzata"] = y_pred_rf
-# soglie_modello["Random Forest Ottimizzata"] = rf_soglie
+soglie_modello["Random Forest Ottimizzata"] = rf_soglie
 
 # xgboost grid search
 print("\n\nXGBOOST - GRID SEARCH")
@@ -446,8 +435,8 @@ xgb_param_grid = {
     "model__min_child_weight": [3, 5],
     "model__reg_alpha": [0.0, 0.5],
     "model__reg_lambda": [1.0, 3.0],
-    "model__gamma": [0.0, 1.0]
-    ,"model__scale_pos_weight": [spw, round(spw * 1.5, 2), round(spw * 2.0, 2)]
+    "model__gamma": [0.0, 1.0],
+    "model__scale_pos_weight": [spw, round(spw * 1.5, 2), round(spw * 2.0, 2)]
 }
 
 xgb_grid = GridSearchCV(
@@ -462,47 +451,35 @@ xgb_grid.fit(X_fit, y_fit)
 print("Migliori parametri XGB:", xgb_grid.best_params_)
 
 best_xgb_val = xgb_grid.best_estimator_
-# SOGLIE CUSTOM (commentate - soglia standard 0.5 usata):
-# proba_val = best_xgb_val.predict_proba(X_val)
-# xgb_soglie = ottimizza_soglie(proba_val, y_val)
-# print(
-#     f"Soglie XGB ottimizzate su validation -> anomalia: {xgb_soglie['soglia_anomalia']:.2f}, "
-#     f"recall_anomalia: {xgb_soglie['recall_anomalia_val']:.4f}, "
-#     f"precision_anomalia: {xgb_soglie['precision_anomalia_val']:.4f}, "
-#     f"FN anomalia: {xgb_soglie['fn_anomalia_val']}"
-# )
+proba_val = best_xgb_val.predict_proba(X_val)
+xgb_soglie = ottimizza_soglie(proba_val, y_val)
+print(
+    f"Soglie XGB ottimizzate su validation -> anomalia: {xgb_soglie['soglia_anomalia']:.2f}, "
+    f"recall_anomalia: {xgb_soglie['recall_anomalia_val']:.4f}, "
+    f"precision_anomalia: {xgb_soglie['precision_anomalia_val']:.4f}, "
+    f"FN anomalia: {xgb_soglie['fn_anomalia_val']}"
+)
 
 best_xgb = clone(xgb_pipeline).set_params(**xgb_grid.best_params_)
 best_xgb.fit(X_train, y_train)
 
-# SOGLIA STANDARD 0.5: usa predict() direttamente
-# soglia_anomalia = xgb_soglie["soglia_anomalia"]
-# proba_train = best_xgb.predict_proba(X_train)
-# y_pred_train_custom = predici_con_soglie(proba_train, soglia_anomalia)
-# proba = best_xgb.predict_proba(X_test)
-# y_pred_custom = predici_con_soglie(proba, soglia_anomalia)
-# valuta_modello("XGBoost Ottimizzata (soglie custom)", y_test, y_pred_custom, proba)
-# valuta_generalizzazione("XGBoost Ottimizzata (soglie custom)", y_train, y_pred_train_custom, y_test, y_pred_custom)
+soglia_anomalia_xgb = xgb_soglie["soglia_anomalia"]
 proba_train_xgb = best_xgb.predict_proba(X_train)
-y_pred_train_xgb = best_xgb.predict(X_train)
+y_pred_train_xgb = predici_con_soglie(proba_train_xgb, soglia_anomalia_xgb)
 proba_xgb = best_xgb.predict_proba(X_test)
-y_pred_xgb = best_xgb.predict(X_test)
-valuta_modello("XGBoost Ottimizzata (soglia 0.5)", y_test, y_pred_xgb, proba_xgb)
-valuta_generalizzazione("XGBoost Ottimizzata (soglia 0.5)", y_train, y_pred_train_xgb, y_test, y_pred_xgb)
+y_pred_xgb = predici_con_soglie(proba_xgb, soglia_anomalia_xgb)
+valuta_modello("XGBoost Ottimizzata (soglie custom)", y_test, y_pred_xgb, proba_xgb)
+valuta_generalizzazione("XGBoost Ottimizzata (soglie custom)", y_train, y_pred_train_xgb, y_test, y_pred_xgb)
 
 results.append({
     "Model": "XGBoost Ottimizzata",
-    # "Accuracy": accuracy_score(y_test, y_pred_custom),
-    # "F1-macro": f1_score(y_test, y_pred_custom, average="macro", zero_division=0)
     "Accuracy": accuracy_score(y_test, y_pred_xgb),
     "F1-Anomalia": f1_score(y_test, y_pred_xgb, pos_label=1, zero_division=0),
     "Recall-Anomalia": recall_score(y_test, y_pred_xgb, pos_label=1, zero_division=0)
 })
 trained_models["XGBoost Ottimizzata"] = best_xgb
-# predizioni_test["XGBoost Ottimizzata"] = y_pred_custom
-# soglie_modello["XGBoost Ottimizzata"] = xgb_soglie
 predizioni_test["XGBoost Ottimizzata"] = y_pred_xgb
-# soglie_modello["XGBoost Ottimizzata"] = xgb_soglie
+soglie_modello["XGBoost Ottimizzata"] = xgb_soglie
 
 # final comparison 
 results_df = pd.DataFrame(results).sort_values("Recall-Anomalia", ascending=False)
@@ -517,7 +494,7 @@ recall_anomalia = recall_score(y_test, best_y_pred, pos_label=1, zero_division=0
 print(f"  Recall ANOMALIA: {recall_anomalia:.4f}")
 print(f"Modello migliore: {best_model_name}  (Recall: {best_recall:.4f}, F1: {best_f1:.4f})")
 
-# cross-validation esterna 
+# cross-validation esterna con soglie custom
 # ti dice media ± deviazione standard
 # quanto il modello mediamente è performante e di quanto può variare la performance
 if "Data_Ora_Fine" in df.columns and len(X) >= 10:
@@ -527,39 +504,32 @@ else:
     cv_esterna = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     cv_descrizione = "StratifiedKFold 5-fold"
 
-cv_acc = cross_val_score(best_model, X, y, cv=cv_esterna, scoring="accuracy", n_jobs=-1)
-cv_roc_auc = cross_val_score(best_model, X, y, cv=cv_esterna, scoring="roc_auc", n_jobs=-1)
 
-print(f"\nSTIMA ROBUSTA CV ESTERNA ({cv_descrizione}) - media ± std:")
-print(f"  Accuracy:       {cv_acc.mean():.4f} ± {cv_acc.std():.4f}")
-print(f"  ROC-AUC:        {cv_roc_auc.mean():.4f} ± {cv_roc_auc.std():.4f}")
-
-# CODE TO USE IN CASE YOU WANT TO USE CUSTOM THRESHOLDS:
-"""
 def cv_con_soglia_custom(model, X, y, cv, soglia):
     metriche = {"accuracy": [], "recall": [], "f1": [], "roc_auc": []}
     
-    for train_idx, test_idx in cv.split(X, y):
-        X_cv_train = X.iloc[train_idx]
-        y_cv_train = y.iloc[train_idx]
-        X_cv_test  = X.iloc[test_idx]
-        y_cv_test  = y.iloc[test_idx]
+    for train_idx_cv, test_idx_cv in cv.split(X, y):
+        X_cv_train = X.iloc[train_idx_cv]
+        y_cv_train = y.iloc[train_idx_cv]
+        X_cv_test  = X.iloc[test_idx_cv]
+        y_cv_test  = y.iloc[test_idx_cv]
         
         m = clone(model)
         m.fit(X_cv_train, y_cv_train)
         proba = m.predict_proba(X_cv_test)
-        y_pred = predici_con_soglie(proba, soglia)
+        y_pred_cv = predici_con_soglie(proba, soglia)
         
-        metriche["accuracy"].append(accuracy_score(y_cv_test, y_pred))
-        metriche["recall"].append(recall_score(y_cv_test, y_pred, pos_label=1, zero_division=0))
-        metriche["f1"].append(f1_score(y_cv_test, y_pred, pos_label=1, zero_division=0))
+        metriche["accuracy"].append(accuracy_score(y_cv_test, y_pred_cv))
+        metriche["recall"].append(recall_score(y_cv_test, y_pred_cv, pos_label=1, zero_division=0))
+        metriche["f1"].append(f1_score(y_cv_test, y_pred_cv, pos_label=1, zero_division=0))
         try:
             metriche["roc_auc"].append(roc_auc_score(y_cv_test, proba[:, 1]))
-        except:
+        except Exception:
             pass
     
     return {k: np.array(v) for k, v in metriche.items()}
-    
+
+
 soglia_best = soglie_modello.get(best_model_name, {}).get("soglia_anomalia", 0.5)
 
 metriche_cv = cv_con_soglia_custom(best_model, X, y, cv_esterna, soglia_best)
@@ -569,7 +539,6 @@ print(f"  Accuracy:        {metriche_cv['accuracy'].mean():.4f} ± {metriche_cv[
 print(f"  Recall ANOMALIA: {metriche_cv['recall'].mean():.4f} ± {metriche_cv['recall'].std():.4f}")
 print(f"  F1 ANOMALIA:     {metriche_cv['f1'].mean():.4f} ± {metriche_cv['f1'].std():.4f}")
 print(f"  ROC-AUC:         {metriche_cv['roc_auc'].mean():.4f} ± {metriche_cv['roc_auc'].std():.4f}")
-"""
 
 # confusion matrix
 print(f"\nMatrice di confusione - {best_model_name}:")
@@ -584,11 +553,11 @@ plt.savefig(OUTPUT_CM_PATH, dpi=150)
 plt.show()
 print(f"Matrice salvata in {OUTPUT_CM_PATH}")
 
-#save model
+# save model
 os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
 joblib.dump(best_model, MODEL_PATH)
 
-# best_soglie = soglie_modello.get(best_model_name)
+best_soglie = soglie_modello.get(best_model_name)
 
 parametri_anomaly = {
     "articoli_top": articoli_top.tolist(),
@@ -596,342 +565,25 @@ parametri_anomaly = {
     "classificazione": "binaria_normale_vs_anomalia",
     "soglia_anomalia": SOGLIA_ANOMALIA,
     "tipo_soglie": "percentile_85",
-    # "soglia_proba_anomalia": best_soglie["soglia_anomalia"] if best_soglie else None,
-    # "soglie_ottimizzate_su_validation": bool(best_soglie),
+    "soglia_proba_anomalia": best_soglie["soglia_anomalia"] if best_soglie else None,
+    "soglie_ottimizzate_su_validation": bool(best_soglie),
 }
 joblib.dump(parametri_anomaly, PARAMS_PATH)
 
 print(f"Modello salvato in {MODEL_PATH}")
 print(f"Parametri salvati in {PARAMS_PATH}")
 
-# ******************************************** APPUNTI ********************************************
 
-#         (i file di regressione non sono adattati ad un dataset di piccole dimensioni)
 
-# ===================================================================================================
-# ============================ INTRODUZIONE DIFFERENZE ANOMALY E BIGDATA ============================
-# ===================================================================================================
 
-# i file classification_models_anomaly_oriented e classification_models_anomaly_bigdata hanno lo 
-# stesso obbiettivo ovvero predire il livello di inefficienza della macchina a partire dalle 
-# feature disponibili. La differenza non è nello scopo, ma nella strategia di modellazione, 
-# che cambia in funzione della quantità di dati disponibile. 
-# infatti classification_models_anomaly_oriented è stato fatto in modo tale che i modelli abbiano
-# delle buone prestazioni nonstante la poca quantità di dati su cui sono addestrati.
 
-# in classification_models_anomaly_oriented si è eseguito un Approccio più RIGIDO (Small Data Oriented)
-# il dataset su cui sono addestrati i modelli è di 387 righe circa
-# Con questa numerosità si ha:
-# Alta varianza del modello
-# Alto rischio di overfitting
-# Alta instabilità delle metriche (1 sola predizione può cambiare recall di ~8%)
-# Per questo motivo i modelli sono stati progettati per essere Più regolarizzati, Meno complessi, Più conservativi
 
-# ===================================================================================================
-# ==================================== QUESTIONE DELLE SOGLIE =======================================
-# ===================================================================================================
 
-# le soglie sono fondamentali in quanto sono quelle che decidono quando si avrà un anomalia o meno
-# Un modello (come XGBoost, Random Forest ecc.) non predice direttamente “anomalia” o “normale”.
-# Predice invece una probabilità in percentuale. bisogna dunque decidere quando questa percentuale
-# è sufficientemente alta perchè possa essere considerata come un anomalia ovvero la soglia.
-# con la soglia a 0.5 significa che quando il modello valuta che la probabilità che si verifichi una
-# anomalia è > 50% allora la considera come tale. abbassando la soglia a 0.15 ad esempio significa che
-# quando il modello prevede che la macchina ha una probabilità che è > 15% allora la considera come 
-# anomalia facendo così si trovano più anomalie ma aumentano i falsi allarmi.
-# questa scelta deve dipendere dall'azienda. Se avere un anomalia è un grande costo significa che 
-# sarà più adatto impostare una soglia bassa ad esempio con min_precision = 0.25 in questo modo 
-# significa che almeno il 25% delle previsioni classificate come anomalia devono essere 
-# effettivamente anomalie. Ciò significa che è accettabile avere un 75% di falsi allarmi.
-# Ciò va bene quando  per l'azienda è meglio avere falsi allarmi piuttosto di rischiare di perdere
-# un anomalia. per il progetto ho deciso di utilizzare una soglia minima di 0.5 che è la soglia 
-# standard dunque non utilizzare le soglie custom in quanto è una soglia che ti permette di non avere 
-# così tanti falsi allarmi ma allo stesso modo non perdersi tante anomalie.
-# stessa cosa è stata fatta anche per anomaly_BD.
-# inizialmente in classificazione standard sono state scelte delle soglie basate sulla 
-# media e l'std il problema è che media e std sono influenzati dalla skweness e non
-# hanno risultato dare valori particolarmente performanti
-# modificando il codice cambiando le soglie usando i quantili (60° percentile) (85° percentile) 
-# i modelli hanno performato in maniera decisamente migliore
-# al posto della media e dell'std che sono più influenzati dalla skweness in quanto i dati 
-# presentano una lunga coda sulla destra e la maggiorparte dei dati sulla sinistra con il 
-# valore di 1.00 ovvero che la macchina performa come dovrebbe e solo una piccola percentuale
-# di volte risultano esserci degli outliers quando la macchina produce con un tempo maggiore
-# o molto maggiore rispetto al tempo previsto, essendo influenzati da ciò le soglie media e std
-# non hanno risultato dare valori particolarmente performanti.
-
-# ===================================================================================================
-# ============================ DIFFERENZE TECNICHE TRA ANOMALY E BIGDATA ============================
-# ===================================================================================================
-
-# STRUTTURA DI ANOMALY:
-
-# 1) RIDUZIONE DEL PROBLEMA: classificazione binaria
- 
-# p85 = df['Indice_Inefficienza'].quantile(0.85)
- 
-# def classifica_inefficienza(valore):
-#     if valore > SOGLIA_ANOMALIA:
-#         return 1
-#     return 0
-# Classi:
- 
-# 0 → NORMALE
-# 1 → ANOMALIA
- 
-# così a differenza di anomaly_db si è eliminata la classe "ATTENZIONE" in quanto # 
-# Con pochi dati: ATTENZIONE è una classe intermedia di conseguenza ha pochi campioni ed 
-# È statisticamente simile sia a NORMALE che ad ANOMALIA, ciò comporta ad avere del rumore decisionale
-# Unificando ATTENZIONE dentro NORMALE si aumenta la numerosità della classe 0, migliorando
-# così la separabilità e riducendo l'instabilità del modello in questo modo ci permette 
-# di focalizzarsi solo sull'individuazione delle anomalie reali
-
-# 2) MODELLI PIù RIGIDI (regolarizzati)
- 
-# Esempio XGBoost nel primo file:
- 
-# XGBClassifier(
-#     max_depth=4,
-#     min_child_weight=5,
-#     reg_alpha=0.5,
-#     reg_lambda=3.0,
-#     gamma=1.0,
-#     subsample=0.8,
-#     colsample_bytree=0.8,
-#     scale_pos_weight=spw
-# )
- 
-# Qui si nota che inseriamo una profondità limitata, Penalizzazioni di L1 e L2 elevate
-# gamma > 0 -> crea meno split inutili, 
-# subsample < 1 -> riduce la varianza e scale_pos_weight calibrato
-
-# 3. SCALE_POS_WEIGHT
-# spw = round(n_neg / max(n_pos, 1), 2)
-# Serve per compensare lo sbilanciamento con pochi dati è fondamentale perché
-# la classe anomalia è minoritaria ed il modello tenderebbe a ignorarla
-
-# STRUTTURA DI BIGDATA:
-
-# è pensato per dataset con elevata numerosità dove il rischio di overfitting è molto più basso
-
-# 1). CLASSIFICAZIONE A 3 CLASSI
-
-# def classifica_inefficienza(valore):
-#     if valore <= SOGLIA_ATTENZIONE:
-#         return 0
-#     elif valore <= SOGLIA_ANOMALIA:
-#         return 1
-#     else:
-#         return 2
- 
-# 0 → NORMALE
-# 1 → ATTENZIONE
-# 2 → ANOMALIA
-
-# Qui si mantiene la struttura semantica completa del problema. 
-# Questo è corretto quando ci sono abbastanza dati per ogni classe ed il modello può apprendere
-# confini complessi in quanto la classe intermedia non crea instabilità
-
-# 2) MODELLI MENO VINCOLATI
- 
-# Esempio XGBoost 
- 
-# XGBClassifier(
-#     objective="multi:softprob",
-#     ...
-# )
- 
-# Grid search più ampia:
-# "model__max_depth": [3, 6, 10],
-# "model__learning_rate": [0.01, 0.1],
-# "model__subsample": [0.8, 1.0]
-
-# Qui: max_depth può arrivare a 10, C'è minore regolarizzazione esplicita, il modello 
-# fa una ricerca più ampia nello spazio iperparametri
-# Questo è sostenibile solo con molti dati.
-
-# 3) METRICA DI OTTIMIZZAZIONE DIVERSA
- 
-# scoring = make_scorer(recall_score, labels=[2], average="macro")
- 
-# Si massimizza il recall solo della classe 2 (ANOMALIA), ma il modello resta multi-classe.
-# a differenza di anomaly_oriented dove il problema è già binario.
-
-# considerazione finale sulle differenze dei due file:
-# in contesti dove si ha accesso a grandi dimensioni di dati il file anomaly_DB
-# porterà sicuramente ad avere performance migliori dei modelli, ma nel caso in cui si abbia invece
-# accesso ad una dimensione di dati limitata come quella che abbiamo noi il file anomaly_db
-# porterebbe ad ancora più overfitting risultando così in dati poco affidabili in quanto falsati
-
-# ===================================================================================================
-# ============================ FUNZIONAMENTO TECNICO DI CLASSIFICAZIONE =============================
-# ===================================================================================================
-
-# prima di addestrare il modello devo droppare delle colonne per far si che l'addestramento
-# sia sensato e privo di overfitting ovvero chiaramente togliendo prima di tutte la colonna 
-# target ovvero i dati che vogliamo predire e poi tante altre colonne che creerebbero una 
-# quantità di dati inutili dal momento che nel preprocessing utilizziamo onehotencoding
-# che trasforma ogni variabile categorica in un formato numerico che il modello può comprendere
-# così facendo però viene creata una colonna per ogni categoria distinta. ad esempio:
-# La colonna ARTICOLO  può avere moltissimi valori diversi (alta cardinalità) con 
-# articoli rari che compaiono solo 1-2 volte
-# dunque con :
-
-# TOP_N_ARTICOLI = 20
-# articoli_top = counts.head(TOP_N_ARTICOLI).index
-# 
-# df['ARTICOLO_grouped'] = df['ARTICOLO'].where(
-#     df['ARTICOLO'].isin(articoli_top),
-#     other='ALTRO'
-# )
-
-# in questo modo mantengo solo i 20 articoli più frequenti, Tutti gli altri vengono trasformati in: ALTRO
-# dal momemento poi che articolo_grouped è all'interno di categorical_cols 
-# Nel preprocessing:
-# ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_cols)
-# Non sto creando una colonna per ogni articolo esistente ma 20 + 1 = 21 colonne
-# in questo modo a differenza del frequency encoding non perdo l'identità dell'articolo
-# come funziona frequency encoding invece: 
-
-# senza frequency encoding: 
-
-#    cliente  articolo  articolo_Mouse  articolo_Monitor  articolo_Tastiera
-# 0    Mario     Mouse               1                 0                   0
-# 1    Luigi  Tastiera               0                 0                   1
-# 2 Giovanni     Mouse               1                 0                   0
-# 3    Mario   Monitor               0                 1                   0
-# 4     Anna  Tastiera               0                 0                   1
-
-#con frequency encoding si avrà invece: 
-
-#    cliente  articolo  articolo_freq
-# 0    Mario     Mouse              2
-# 1    Luigi  Tastiera              2
-# 2 Giovanni     Mouse              2
-# 3    Mario   Monitor              1
-# 4     Anna  Tastiera              2
-
-# il problema è che in questo modo si perde l'identità dell'articolo ad esempio nel nostro caso se
-# una macchina è inefficiente ogni volta che deve produrre un mouse, il modello ora considera sia il mouse
-# che la tastiera come lo stesso oggetto avendo la stessa frequenza in questo modo non è in grado di distinguere
-# il fatto che magari la produzione del mouse è inefficiente mentre quella della tastiera si.
-
-# scoring che è quel fattore che valuta i modelli basandoti solo su quanto sono bravi a identificare 
-# correttamente gli esempi della classe ANOMALIE, ignorando le altre classi durante l'ottimizzazione
-
-# ===================================================================================================
-# ==================================== COMMENTO DATI OTTENUTI =======================================
-# ===================================================================================================
-
-# METRICHE:
-
-# ACCURACY  = calcola la percentuale di risposte corrette
-# F1-SCORE  = combina le metriche precisione e richiamo in un unico valore 
-# PRECISION = Indica quanti tra tutti i casi positivi (anomalie) che il modello ha segnalato sono effettivamente reali.
-# RECALL    = Indica quanti tra tutti i casi positivi (anomalie) reali il modello è riuscito a predire.
-# ROC-AUC   = misura quanto un modello è in grado di distinguere tra le classi a diversi livelli di soglia.
-
-# Curva ROC (Receiver Operating Characteristic): È un grafico che mostra la performance del modello tracciando due parametri
-# al variare della soglia di classificazione:
-# True Positive Rate (TPR) / Sensibilità / Recall: Indica la percentuale di casi positivi correttamente identificati.
-# False Positive Rate (FPR): Indica la percentuale di casi negativi erroneamente classificati come positivi.
-# AUC (Area Under the Curve): Rappresenta l'area geometrica sottesa alla curva ROC.
-# F1-score (per classe) = Media armonica di precision e recall di quella singola classe
-# F1-macro = Media semplice degli F1-score di tutte le classi, senza pesare per quante osservazioni ha ogni classe
-# F1-weighted = Media degli F1-score pesata per il numero di campioni di ogni classe
-
-# Definizione delle anomalie
-# Le anomalie sono state definite utilizzando una soglia pari all'85° percentile del rapporto tra 
-# tempo reale e tempo teorico.
- 
-# Soglia anomalia: 1.4311
- 
-# Se il tempo reale supera il 143% del tempo teorico l'osservazione viene classificata come anomalia
- 
-# Distribuzione delle classi
-# Dataset sbilanciato:
- 
-# Classe	    Campioni	Percentuale
-# NORMALE	         329	        85%
-# ANOMALIA	      58	        15%
- 
-# Per gestire lo sbilanciamento è stato utilizzato il parametro scale_pos_weight = 6.26 
-# che aumenta il peso della classe ANOMALIA durante l'addestramento.
- 
-# Confronto dei modelli base
-# Sono stati confrontati cinque modelli:
- 
-# Logistic Regression
-# Decision Tree
-# Random Forest
-# XGBoost
-# SVM
- 
-# Le metriche principali analizzate sono:
- 
-# Accuracy
-# Recall della classe anomalia
-# F1-score della classe anomalia
-# ROC-AUC
- 
-# Poiché l'obiettivo è individuare inefficienze produttive, la metrica più importante è la 
-# Recall della classe anomalia, cioè la capacità del modello di individuare più anomalie possibili.
- 
-# LOGISTIC REGRESSION:
-# Accuracy: 0.82
-# Recall anomalie: 0.50 (trova il 50% delle anomalie)
-# Gap train-test: 0.037
-
-# DECISION TREE:
-# Accuracy: 0.85
-# Recall anomalie: 0.43
-# Gap train-test: 0.043
- 
-# RANDOM FOREST:
-# Accuracy: 0.85
-# Recall anomalie: 0.29
-# Gap train-test: 0.14 
-
-# XGBOOST:
-# Accuracy: 0.88
-# Recall anomalie: 0.57
-# Gap train-test: 0.108
-
-# SVM:
-# Accuracy: 0.78
-# Recall anomalie: 0.36
-# Gap train-test: 0.104
- 
-# RANDOM FOREST GRIDSEARCH:
-# Parametri principali:
-# profondità limitata (max_depth = 4)
-# maggiore numero di alberi (n_estimators = 400)
-# Recall anomalie: 0.36 peggioramento rispetto alla versione base.
-
-# XGBOOST GRIDSEARCH
-# Parametri principali:
-# profondità limitata (max_depth = 3)
-# maggiore numero di alberi (n_estimators = 200)
-# scale_pos_weight=9.39
-# Recall anomalie: 0.36 peggioramento rispetto alla versione base.
- 
-# CONFRONTO FINALE TRA I MODELLI:
-
-#                     Model     Accuracy    F1-Anomalia     Recall-Anomalia
-#                   XGBoost     0.884615       0.640000            0.571429
-#       Logistic Regression     0.820513       0.500000            0.500000
-#             Decision Tree     0.846154       0.500000            0.428571
-# Random Forest Ottimizzata     0.846154       0.454545            0.357143
-#                       SVM     0.782051       0.370370            0.357143
-#       XGBoost Ottimizzata     0.858974       0.476190            0.357143
-#             Random Forest     0.846154       0.400000            0.285714
-#   Recall ANOMALIA: 0.5714
-# Modello migliore: XGBoost  (Recall: 0.5714, F1: 0.6400)
 
 # ===============================================================================================
 # ========================================= OUTPUT ==============================================
 # ===============================================================================================
-
+ 
 # Soglia ANOMALIA (85° percentile): 1.4311
 # DISTRIBUZIONE CLASSI:
 #   Classe 0 (NORMALE): 329 campioni (85.0%)
@@ -1036,6 +688,12 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 # 
 # Generalizzazione - SVM
 #   Training Accuracy:   0.8867
+# 
+# Generalizzazione - SVM
+#   Training Accuracy:   0.8867
+# Generalizzazione - SVM
+#   Training Accuracy:   0.8867
+#   Training Accuracy:   0.8867
 #   Validation Accuracy: 0.7821
 #   Gap (train-test):    0.1047
 #   Diagnosi:            OVERFITTING (training accuracy molto più alta della validation/test)
@@ -1044,65 +702,69 @@ print(f"Parametri salvati in {PARAMS_PATH}")
 # RANDOM FOREST - GRID SEARCH
 # Fitting 5 folds for each of 48 candidates, totalling 240 fits
 # Migliori parametri RF: {'model__max_depth': 4, 'model__max_features': 0.7, 'model__min_samples_leaf': 10, 'model__min_samples_split': 10, 'model__n_estimators': 400}
+# Soglie RF ottimizzate su validation -> anomalia: 0.41, recall_anomalia: 1.0000, precision_anomalia: 0.4545, FN anomalia: 0
 # 
 # ==================================================
-#   Random Forest Ottimizzata (soglia 0.5)
+#   Random Forest Ottimizzata (soglie custom)
 # ==================================================
 #               precision    recall  f1-score   support
 # 
-#      NORMALE       0.87      0.95      0.91        64
-#     ANOMALIA       0.62      0.36      0.45        14
+#      NORMALE       0.88      0.91      0.89        64
+#     ANOMALIA       0.50      0.43      0.46        14
 # 
-#     accuracy                           0.85        78
-#    macro avg       0.75      0.66      0.68        78
-# weighted avg       0.83      0.85      0.83        78
+#     accuracy                           0.82        78
+#    macro avg       0.69      0.67      0.68        78
+# weighted avg       0.81      0.82      0.81        78
 # 
 #   ROC-AUC: 0.8940
 # 
-# Generalizzazione - Random Forest Ottimizzata (soglia 0.5)
-#   Training Accuracy:   0.9515
-#   Validation Accuracy: 0.8462
-#   Gap (train-test):    0.1053
+# Generalizzazione - Random Forest Ottimizzata (soglie custom)
+#   Training Accuracy:   0.9126
+#   Validation Accuracy: 0.8205
+#   Gap (train-test):    0.0921
 #   Diagnosi:            OVERFITTING (training accuracy molto più alta della validation/test)
 # 
 # 
 # XGBOOST - GRID SEARCH
 # Fitting 5 folds for each of 576 candidates, totalling 2880 fits
 # Migliori parametri XGB: {'model__colsample_bytree': 0.8, 'model__gamma': 1.0, 'model__learning_rate': 0.05, 'model__max_depth': 3, 'model__min_child_weight': 3, 'model__n_estimators': 200, 'model__reg_alpha': 0.0, 'model__reg_lambda': 3.0, 'model__scale_pos_weight': 9.39, 'model__subsample': 0.8}
+# Soglie XGB ottimizzate su validation -> anomalia: 0.15, recall_anomalia: 1.0000, precision_anomalia: 0.4167, FN anomalia: 0
 # 
 # ==================================================
-#   XGBoost Ottimizzata (soglia 0.5)
+#   XGBoost Ottimizzata (soglie custom)
 # ==================================================
 #               precision    recall  f1-score   support
 # 
-#      NORMALE       0.87      0.97      0.92        64
-#     ANOMALIA       0.71      0.36      0.48        14
+#      NORMALE       0.96      0.75      0.84        64
+#     ANOMALIA       0.43      0.86      0.57        14
 # 
-#     accuracy                           0.86        78
-#    macro avg       0.79      0.66      0.70        78
-# weighted avg       0.84      0.86      0.84        78
+#     accuracy                           0.77        78
+#    macro avg       0.69      0.80      0.71        78
+# weighted avg       0.86      0.77      0.79        78
 # 
 #   ROC-AUC: 0.8828
 # 
-# Generalizzazione - XGBoost Ottimizzata (soglia 0.5)
-#   Training Accuracy:   0.9903
-#   Validation Accuracy: 0.8590
-#   Gap (train-test):    0.1313
+# Generalizzazione - XGBoost Ottimizzata (soglie custom)
+#   Training Accuracy:   0.8576
+#   Validation Accuracy: 0.7692
+#   Gap (train-test):    0.0884
 #   Diagnosi:            OVERFITTING (training accuracy molto più alta della validation/test)
 # 
 # 
 # CONFRONTO FINALE MODELLI:
 #                     Model  Accuracy  F1-Anomalia  Recall-Anomalia
+#       XGBoost Ottimizzata  0.769231     0.571429         0.857143
 #                   XGBoost  0.884615     0.640000         0.571429
 #       Logistic Regression  0.820513     0.500000         0.500000
+# Random Forest Ottimizzata  0.820513     0.461538         0.428571
 #             Decision Tree  0.846154     0.500000         0.428571
-# Random Forest Ottimizzata  0.846154     0.454545         0.357143
 #                       SVM  0.782051     0.370370         0.357143
-#       XGBoost Ottimizzata  0.858974     0.476190         0.357143
 #             Random Forest  0.846154     0.400000         0.285714
-#   Recall ANOMALIA: 0.5714
-# Modello migliore: XGBoost  (Recall: 0.5714, F1: 0.6400)
+#   Recall ANOMALIA: 0.8571
+# Modello migliore: XGBoost Ottimizzata  (Recall: 0.8571, F1: 0.5714)
 # 
-# STIMA ROBUSTA CV ESTERNA (TimeSeriesSplit 5-fold) - media ± std:
-#   Accuracy:       0.8844 ± 0.0322
-#   ROC-AUC:        0.8893 ± 0.0436
+# STIMA ROBUSTA CV ESTERNA (TimeSeriesSplit 5-fold) - soglia=0.15 - media ± std:
+#   Accuracy:        0.7750 ± 0.0449
+#   Recall ANOMALIA: 0.8685 ± 0.1480
+#   F1 ANOMALIA:     0.5064 ± 0.1114
+#   ROC-AUC:         0.9000 ± 0.0332

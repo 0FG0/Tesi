@@ -44,23 +44,35 @@ df['ARTICOLO_grouped'] = df['ARTICOLO_grouped'].fillna('ALTRO').astype(str)
 
 df = pipeline_classificazione(df)
 
-# class definition (target)
-p60 = df['Indice_Inefficienza'].quantile(0.60)
-p85 = df['Indice_Inefficienza'].quantile(0.85)
+# index split
+if "Data_Ora_Fine" in df.columns:
+    idx_sorted = df.sort_values("Data_Ora_Fine").index
+    split_idx  = int(len(idx_sorted) * 0.8)
+    train_idx  = idx_sorted[:split_idx]
+    test_idx   = idx_sorted[split_idx:]
+else:
+    idx_all   = df.index.tolist()
+    split_idx = int(len(idx_all) * 0.8)
+    train_idx = pd.Index(idx_all[:split_idx])
+    test_idx  = pd.Index(idx_all[split_idx:])
 
-print(f"Soglia ATTENZIONE (60° percentile): {p60:.4f}")
-print(f"Soglia ANOMALIA   (85° percentile): {p85:.4f}")
+# thresholds just on training 
+p60 = df.loc[train_idx, 'Indice_Inefficienza'].quantile(0.60)
+p85 = df.loc[train_idx, 'Indice_Inefficienza'].quantile(0.85)
+
+print(f"Soglia ATTENZIONE (60° percentile, solo train): {p60:.4f}")
+print(f"Soglia ANOMALIA   (85° percentile, solo train): {p85:.4f}")
 
 SOGLIA_ATTENZIONE = p60
 SOGLIA_ANOMALIA = p85
 
 def classifica_inefficienza(valore):
     if valore <= SOGLIA_ATTENZIONE:
-        return 0   
+        return 0
     elif valore <= SOGLIA_ANOMALIA:
-        return 1   
+        return 1
     else:
-        return 2   
+        return 2
 
 df["classe"] = df["Indice_Inefficienza"].apply(classifica_inefficienza)
 
@@ -95,18 +107,9 @@ cols_to_drop = [
 y = df["classe"]
 X = df.drop(columns=cols_to_drop, errors="ignore")
 
-# train/test split 
-if "Data_Ora_Fine" in df.columns:
-    idx_sorted = df.sort_values("Data_Ora_Fine").index
-    split_idx = int(len(idx_sorted) * 0.8)
-    train_idx = idx_sorted[:split_idx]
-    test_idx = idx_sorted[split_idx:]
-    X_train, X_test = X.loc[train_idx].copy(), X.loc[test_idx].copy()
-    y_train, y_test = y.loc[train_idx].copy(), y.loc[test_idx].copy()
-else:
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+# split X e y 
+X_train, X_test = X.loc[train_idx].copy(), X.loc[test_idx].copy()
+y_train, y_test = y.loc[train_idx].copy(), y.loc[test_idx].copy()
 
 # train/validation split per ottimizzare le soglie probabilistiche
 if "Data_Ora_Fine" in df.columns and len(X_train) > 5:
